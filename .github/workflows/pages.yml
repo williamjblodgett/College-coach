@@ -31,6 +31,10 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # Auto-provision the Pages site (Actions source) so no manual
+          # Settings → Pages step is required for the first deploy.
+          enablement: true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
