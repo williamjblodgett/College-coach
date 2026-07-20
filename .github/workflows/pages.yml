@@ -30,11 +30,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure Pages
+        # Requires a one-time repo setup: Settings → Pages → Source =
+        # "GitHub Actions" (the default token can't provision Pages itself).
         uses: actions/configure-pages@v5
-        with:
-          # Auto-provision the Pages site (Actions source) so no manual
-          # Settings → Pages step is required for the first deploy.
-          enablement: true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
