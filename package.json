@@ -1,0 +1,13 @@
+{
+  "name": "gridiron-dynasty",
+  "version": "1.0.0",
+  "private": true,
+  "description": "College football head-coaching career simulator (vanilla JS PWA).",
+  "scripts": {
+    "test": "node tests/run.js",
+    "serve": "python3 -m http.server 8017"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.48.0"
+  }
+}
