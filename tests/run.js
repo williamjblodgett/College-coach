@@ -429,7 +429,9 @@ function serve() {
   const tickers = await page.evaluate(() => document.querySelectorAll('.tk-line').length);
   ok(tickers > 5, 'play-by-play ticker populates (got ' + tickers + ')');
 
-  // Finish the game and commit.
+  // Finish the game and commit. Clear any lingering decision overlay first
+  // (it covers the controls), then sim to the final whistle.
+  for (let k = 0; k < 4 && (await page.$('.decision-card')); k++) { await page.click('.dc-opt'); await page.waitForTimeout(20); }
   if (!(await page.$('.final-card'))) await page.click('button:has-text("Sim to Final")');
   await page.waitForSelector('.final-card');
   await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/gameday.png'), fullPage: true });
@@ -668,6 +670,142 @@ function serve() {
   const budgetAfter = await page.evaluate(() => window.GameEngine.state.program.staffBudget);
   ok(budgetAfter < budgetBefore, 'hiring a coach spends staff budget');
   await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/staff.png'), fullPage: true });
+
+  // ---------- (a) SCANDAL ENGINE ----------
+  group('Scandal: temptations, heat, verdicts, sanctions, firing');
+  const sc = await page.evaluate(() => {
+    const E = window.GameEngine, S = window.GameSeason, P = window.GameProgram, Sc = window.GameScandal, T = window.TeamData;
+    const out = {};
+    function playSeason(mode) {
+      let g = 0;
+      while (E.state.season.phase === 'regular' && g++ < 40) {
+        const ev = Sc.pendingEvent(E.state);
+        if (ev) {
+          let pick;
+          if (mode === 'cheat') { const r = ev.options.find(o => o.risky); pick = r ? r.id : ev.options[0].id; }
+          else pick = ev.options[0].id; // decline/clean
+          Sc.resolve(E.state, pick);
+        } else S.simWeek(E.state);
+      }
+      S.playConfChamps(E.state); S.playPostseason(E.state);
+      return S.finish(E.state);
+    }
+
+    // Cheater: repeatedly take risks -> should draw sanctions and eventually fire.
+    E.newCareer({ id: 'c', name: 'Coach', source: 'custom', ratings: { recruiting: 78, offense: 78, defense: 78, development: 78, discipline: 72, motivation: 78, media: 65 } }, T.get('oregon'));
+    out.initHeat = E.state.integrity.heat;
+    out.initAdTrust = E.state.integrity.adTrust;
+    let sanctioned = false, banned = false, fired = false, investigated = false, events = 0;
+    for (let ssn = 0; ssn < 8; ssn++) {
+      S.start(E.state);
+      const sum = playSeason('cheat');
+      events += E.state.integrity.allegations.length;
+      if (sum.verdict && sum.verdict.investigated) investigated = true;
+      if (sum.verdict && ['secondary', 'major', 'severe'].includes(sum.verdict.severity)) sanctioned = true;
+      if (sum.postseasonBanned) banned = true;
+      if (sum.fired) { fired = true; break; }
+      P.signingDay(E.state); P.beginOffseason(E.state); P.startNextSeason(E.state);
+    }
+    out.cheaterInvestigated = investigated;
+    out.cheaterSanctioned = sanctioned;
+    out.cheaterBannedSomeYear = banned;
+    out.cheaterFired = fired;
+    out.cheaterTookRisks = events > 0;
+
+    // Clean coach: never take risks -> should not be sanctioned or fired.
+    E.newCareer({ id: 'c2', name: 'Clean', source: 'custom', ratings: { recruiting: 82, offense: 80, defense: 80, development: 80, discipline: 84, motivation: 80, media: 65 } }, T.get('georgia'));
+    let cleanSanction = false, cleanFired = false;
+    for (let ssn = 0; ssn < 6; ssn++) {
+      S.start(E.state);
+      const sum = playSeason('clean');
+      if (sum.verdict && ['secondary', 'major', 'severe'].includes(sum.verdict.severity)) cleanSanction = true;
+      if (sum.fired) { cleanFired = true; break; }
+      P.signingDay(E.state); P.beginOffseason(E.state); P.startNextSeason(E.state);
+    }
+    out.cleanSanction = cleanSanction;
+    out.cleanFired = cleanFired;
+    out.cleanFinalHeat = E.state.integrity.heat;
+
+    // Direct sanction check: force a bowl ban and confirm the postseason excludes the player.
+    E.newCareer({ id: 'c3', name: 'Banned', source: 'custom', ratings: { recruiting: 90, offense: 88, defense: 88, development: 85, discipline: 74, motivation: 85, media: 70 } }, T.get('alabama'));
+    S.start(E.state);
+    E.state.integrity.bowlBanUntil = E.state.career.year; // ban this year
+    while (E.state.season.phase === 'regular') S.simWeek(E.state);
+    S.playConfChamps(E.state); S.playPostseason(E.state);
+    out.bannedExcludedFromSeeds = E.state.season.postseason.cfpSeeds.indexOf('alabama') < 0;
+    out.bannedFlag = !!E.state.season.postseason.playerBanned;
+
+    // changeJob keeps career totals but resets the program.
+    const winsBefore = E.state.career.wins;
+    E.state.integrity.fired = true; E.state.integrity.firedReason = 'showcause';
+    E.changeJob(T.get('kentst'));
+    out.jobChangedTeam = E.state.team.id === 'kentst';
+    out.careerKept = E.state.career.wins === winsBefore;
+    out.firedReset = E.state.integrity.fired === false;
+    out.newRoster = E.state.roster.length > 0;
+    return out;
+  });
+  ok(sc.cheaterTookRisks, 'temptation events fire and can be taken');
+  ok(sc.cheaterInvestigated, 'repeated risks eventually trigger an investigation');
+  ok(sc.cheaterSanctioned, 'investigations produce NCAA sanctions');
+  ok(sc.cheaterFired, 'a serial cheater is eventually fired');
+  ok(!sc.cleanSanction, 'a clean program is not sanctioned');
+  ok(!sc.cleanFired, 'a clean, winning coach is not fired');
+  ok(sc.cleanFinalHeat < 25, 'a clean program keeps low scrutiny (' + sc.cleanFinalHeat + ')');
+  ok(sc.bannedExcludedFromSeeds, 'a postseason ban excludes the player from the playoff');
+  ok(sc.bannedFlag, 'the postseason ban flag is set');
+  ok(sc.jobChangedTeam, 'changeJob moves to the new program');
+  ok(sc.careerKept, 'changeJob keeps career win totals');
+  ok(sc.firedReset, 'changeJob clears the fired flag');
+  ok(sc.newRoster, 'changeJob builds a fresh roster');
+
+  group('Save backfill: pre-wave-6 save gains integrity');
+  const bf4 = await page.evaluate(() => {
+    const E = window.GameEngine;
+    const old = { saveVersion: 1, coach: { name: 'Legacy', ratings: { recruiting: 60, offense: 60, defense: 60, development: 60, discipline: 60, motivation: 60, media: 60 } },
+      team: { id: 'auburn', division: 'fbs' }, career: { wins: 8, losses: 2, year: 2025 } };
+    E.deserialize(JSON.stringify(old));
+    window.GameProgram.ensureProgram(E.state);
+    return { hasIntegrity: !!E.state.integrity && typeof E.state.integrity.heat === 'number', adTrust: E.state.integrity.adTrust, keptWins: E.state.career.wins };
+  });
+  ok(bf4.hasIntegrity, 'backfill adds the integrity/compliance schema');
+  eq(bf4.keptWins, 8, 'backfill preserves saved career wins');
+
+  group('UI: compliance panel + temptation card');
+  await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => window.GameUI && window.GameScandal);
+  await page.evaluate(() => {
+    const E = window.GameEngine, S = window.GameSeason, T = window.TeamData;
+    E.newCareer({ id: 'c', name: 'Coach Vance', source: 'custom', ratings: { recruiting: 80, offense: 80, defense: 78, development: 80, discipline: 74, motivation: 78, media: 66 } }, T.get('oregon'));
+    S.start(E.state);
+    // Force a pending temptation for the UI.
+    E.state.integrity.pendingEvent = { id: 'recruit_bagman' };
+    E.state.screen = 'season'; window.GameUI.renderSeason();
+  });
+  await page.waitForSelector('.season-tabs');
+  await page.click('.season-tabs .tab:has-text("This Week")');
+  await page.waitForSelector('.scandal-card');
+  ok(await page.isVisible('.scandal-card'), 'a temptation card renders in the week tab');
+  const heatBefore = await page.evaluate(() => window.GameEngine.state.integrity.heat);
+  // take the risky option (the one with .risky styling)
+  await page.click('.scandal-card .dc-opt.risky');
+  const heatAfter = await page.evaluate(() => window.GameEngine.state.integrity.heat);
+  ok(heatAfter > heatBefore, 'taking a violation raises program heat');
+  await page.click('.season-tabs .tab:has-text("This Week")'); // back to a normal week view
+  await page.evaluate(() => { window.GameEngine.state.screen = 'hq'; window.GameUI.renderHQ(); });
+  await page.waitForSelector('.hq');
+  ok(await page.isVisible('text=Program Scrutiny'), 'HQ shows the compliance panel');
+
+  // Fired screen renders and offers a new job.
+  await page.evaluate(() => {
+    const E = window.GameEngine;
+    E.state.integrity.fired = true; E.state.integrity.firedReason = 'sanctions';
+    window.GameUI.renderFired();
+  });
+  await page.waitForSelector('.fired-card');
+  ok(await page.isVisible('.offer-card'), 'fired screen offers a new job');
+  await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/scandal.png'), fullPage: true });
 
   group('No runtime errors');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));

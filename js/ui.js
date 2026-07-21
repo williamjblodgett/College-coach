@@ -508,10 +508,38 @@
       ])
     ]);
 
+    // Compliance & AD panel (wave 6).
+    var compliancePanel = null;
+    if (window.GameScandal) {
+      var Scandal = window.GameScandal;
+      var band = Scandal.scrutinyBand(s);
+      var integ = s.integrity;
+      var sanctions = [];
+      if (integ.showCause) sanctions.push('Show-cause penalty');
+      if (integ.bowlBanUntil >= s.career.year) sanctions.push('Postseason ban (' + integ.bowlBanUntil + ')');
+      if (integ.scholarshipPenalty > 0) sanctions.push('Scholarship reductions (' + integ.scholarshipPenalty + 'y)');
+      if (integ.probation > 0) sanctions.push('Probation (' + integ.probation + 'y)');
+      compliancePanel = el('div', { class: 'panel' }, [
+        el('h3', { text: '🏛️ Compliance & AD' }),
+        el('div', { class: 'comp-row' }, [
+          el('span', { class: 'comp-label', text: 'Program Scrutiny' }),
+          el('span', { class: 'scrutiny ' + band.cls, text: band.label })
+        ]),
+        el('div', { class: 'kv' }, [
+          el('span', { class: 'kv-label', text: 'AD Trust' }),
+          el('span', { class: 'meter' }, [el('span', { class: 'meter-fill', style: 'width:' + integ.adTrust + '%' })]),
+          el('span', { class: 'kv-num', text: integ.adTrust })
+        ]),
+        sanctions.length
+          ? el('div', { class: 'sanction-list' }, sanctions.map(function (x) { return el('div', { class: 'sanction-item', text: '⛔ ' + x }); }))
+          : el('p', { class: 'muted', text: 'Program in good standing.' })
+      ]);
+    }
+
     var screen = el('div', { class: 'screen hq' }, [
       hero, stats,
       el('div', { class: 'panel-grid' }, [coachPanel, rivalPanel]),
-      nextPanel
+      compliancePanel, nextPanel
     ]);
     mount(screen);
   }
@@ -602,9 +630,38 @@
     };
 
     // -- This Week / advance controls --
+    function scandalCard(ev) {
+      var Scandal = window.GameScandal;
+      return el('div', { class: 'scandal-card' }, [
+        el('div', { class: 'sc-flag', text: '⚠️ ' + ev.category }),
+        el('div', { class: 'sc-title', text: ev.title }),
+        el('div', { class: 'sc-blurb', text: ev.blurb }),
+        el('div', { class: 'sc-options' }, ev.options.map(function (o) {
+          return el('button', { class: 'dc-opt' + (o.risky ? ' risky' : ''), onclick: function () {
+            Scandal.resolve(s, o.id); E.save();
+            if (s.integrity.fired) { renderFired(); return; }
+            draw(); refreshHero();
+          } }, [
+            el('div', { class: 'dc-opt-label', text: o.label }),
+            el('div', { class: 'dc-opt-desc', text: o.desc })
+          ]);
+        }))
+      ]);
+    }
+
     function weekTab() {
       var wrap = el('div');
       var phase = s.season.phase;
+
+      // A pending compliance/scandal decision takes priority.
+      var Scandal = window.GameScandal;
+      var pendingScandal = Scandal && Scandal.pendingEvent(s);
+      if (pendingScandal) wrap.appendChild(scandalCard(pendingScandal));
+
+      // Postseason-ban notice.
+      if (Scandal && Scandal.postseasonBanned(s)) {
+        wrap.appendChild(el('div', { class: 'ban-note', text: '🚫 Program is under a postseason ban this season.' }));
+      }
 
       // Show the most recent simmed week's result, if any.
       if (lastWeekResult && lastWeekResult.playerGame) {
@@ -928,8 +985,81 @@
         }) : [el('p', { class: 'muted', text: sum.wins >= 6 ? 'Bowl-eligible season.' : 'A building year.' })]),
         el('div', { class: 'sum-rep', text: 'Reputation ' + (sum.repDelta >= 0 ? '+' : '') + sum.repDelta + ' → ' + sum.reputation }),
         champ ? el('div', { class: 'sum-natl', text: 'National Champion: ' + champ.name + ' ' + champ.nick }) : null,
-        el('div', { class: 'btn-row', style: 'justify-content:center;margin-top:18px' }, [
-          btn('✍️  Continue to Signing Day  →', 'primary big', function () { renderSigningDay(); })
+        verdictBlock(sum),
+        el('div', { class: 'btn-row', style: 'justify-content:center;margin-top:18px' },
+          sum.fired
+            ? [btn('Face the Consequences  →', 'primary big', function () { renderFired(); })]
+            : [btn('✍️  Continue to Signing Day  →', 'primary big', function () { renderSigningDay(); })])
+      ])
+    ]);
+    mount(card);
+  }
+
+  // Compliance-review block for the season summary (wave 6).
+  function verdictBlock(sum) {
+    var v = sum.verdict;
+    if (!v) return null;
+    if (!v.investigated && v.severity !== 'simmering' && !sum.fired) {
+      if (sum.postseasonBanned) return el('div', { class: 'verdict-block' }, [el('div', { class: 'vb-line muted', text: 'Served a postseason ban this year. No new violations found.' })]);
+      return null;
+    }
+    var sevLabel = { cleared: 'Cleared', secondary: 'Secondary Violations', major: 'Major Violations', severe: 'Show-Cause', simmering: 'Allegation Unresolved', hotseat: 'Dismissed' }[v.severity] || '';
+    var cls = (v.severity === 'severe' || sum.fired) ? 'bad' : (v.severity === 'major' ? 'warn' : 'ok');
+    return el('div', { class: 'verdict-block ' + cls }, [
+      el('div', { class: 'vb-head', text: '🏛️ NCAA / Compliance Review' }),
+      el('div', { class: 'vb-sev', text: sevLabel }),
+      (v.sanctions && v.sanctions.length) ? el('div', { class: 'vb-sanctions' }, v.sanctions.map(function (x) { return el('div', { class: 'vb-item', text: '• ' + x }); })) : null,
+      v.severity === 'simmering' ? el('div', { class: 'vb-line muted', text: 'The allegation did not surface this year — but it is not going away.' }) : null
+    ]);
+  }
+
+  // ---- Fired / resignation outcome (Wave 6, previews wave 7 carousel) -------
+  function renderFired() {
+    var s = E.state;
+    var reason = s.integrity.firedReason;
+    var reasonText = {
+      showcause: 'A show-cause penalty has ended your tenure. Your name is mud on the coaching carousel.',
+      sanctions: 'Major NCAA sanctions cost you the confidence of the administration. You have been let go.',
+      performance: 'The athletic director ran out of patience. You have been fired.',
+      resign: 'You stepped down from your position on your own terms.'
+    }[reason] || 'Your tenure has come to an end.';
+
+    var team = T.get(s.team.id) || { prestige: 5 };
+    // Lower-tier job openings you could take to keep coaching.
+    var maxPrestige = reason === 'showcause' ? Math.max(1, team.prestige - 4)
+      : reason === 'resign' ? team.prestige : Math.max(1, team.prestige - 2);
+    var seed = (s.seed ^ (s.career.year * 40597)) >>> 0;
+    var rng = E.makeRng(seed);
+    var pool = T.byDivision('fbs').filter(function (t) {
+      return t.id !== s.team.id && t.prestige <= maxPrestige && t.prestige >= Math.max(1, maxPrestige - 3);
+    });
+    // shuffle + take a few offers
+    for (var i = pool.length - 1; i > 0; i--) { var j = Math.floor(rng() * (i + 1)); var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp; }
+    var offers = pool.slice(0, 4);
+
+    var card = el('div', { class: 'screen fired-screen' }, [
+      el('div', { class: 'fired-card' }, [
+        el('div', { class: 'fired-eyebrow', text: reason === 'resign' ? 'RESIGNATION' : 'DISMISSED' }),
+        el('div', { class: 'fired-title', text: reason === 'resign' ? 'You Stepped Down' : 'You’ve Been Let Go' }),
+        el('p', { class: 'fired-reason', text: reasonText }),
+        el('div', { class: 'fired-career', text: 'Career: ' + s.career.wins + '–' + s.career.losses + ' · ' +
+          s.career.confTitles + ' conf titles · ' + s.career.natTitles + ' national titles · ' + s.career.seasonsCoached + ' seasons' }),
+        offers.length ? el('div', { class: 'offer-head', text: 'Programs willing to give you a shot:' }) : null,
+        el('div', { class: 'offer-list' }, offers.map(function (t) {
+          return el('button', { class: 'offer-card', onclick: function () {
+            E.changeJob(t); E.save(); renderHQ();
+          } }, [
+            teamBadge(t, 34),
+            el('div', {}, [
+              el('div', { class: 'card-title', text: t.name + ' ' + t.nick }),
+              el('div', { class: 'card-sub', text: t.conf + ' · prestige ' + t.prestige + '/10' })
+            ])
+          ]);
+        })),
+        el('div', { class: 'btn-row', style: 'justify-content:center;margin-top:14px' }, [
+          btn('Retire from Coaching', 'ghost', function () {
+            E.save(); renderTitle();
+          })
         ])
       ])
     ]);
@@ -1514,6 +1644,7 @@
     renderStaff: renderStaff,
     renderSigningDay: renderSigningDay,
     renderOffseason: renderOffseason,
+    renderFired: renderFired,
     teamBadge: teamBadge,
     toast: toast,
     // exposed for tests

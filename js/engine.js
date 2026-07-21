@@ -136,6 +136,25 @@
       // Coaching staff cabinet + hiring market (wave 5).
       staff: {},                  // role id -> staff member object
       staffMarket: [],            // available candidates to hire
+      // Compliance / scandal risk system (wave 6). A risk-vs-reward liability
+      // model: temptations grant short-term gains but raise scrutiny (heat),
+      // which can trigger an investigation and NCAA sanctions.
+      integrity: {
+        heat: 0,                  // 0-100 hidden scrutiny level
+        adTrust: 60,              // 0-100 administration confidence
+        underInvestigation: false,
+        probation: 0,             // seasons of probation remaining
+        bowlBanUntil: 0,          // banned from the postseason through this year
+        scholarshipPenalty: 0,    // seasons of reduced recruiting remaining
+        showCause: false,         // career-defining sanction
+        fired: false,
+        pendingEvent: null,       // temptation event awaiting a decision
+        seenEvents: [],           // one-time event ids already used
+        eventsThisSeason: 0,
+        riskyThisSeason: 0,
+        allegations: [],          // history of events + verdicts
+        lastVerdict: null         // most recent end-of-season review result
+      },
       history: [],                // season summaries
       settings: {
         sound: true,
@@ -186,6 +205,31 @@
       this.state = normalize(s);
       // Generate the initial roster + recruiting board (wave 4).
       if (window.GameProgram && team) window.GameProgram.initProgram(this.state);
+      return this.state;
+    },
+
+    // Move to a new program (after being fired/resigning, or later via the job
+    // carousel). Keeps the coach + career totals; resets the season, roster,
+    // staff, recruiting, and compliance for a fresh program.
+    changeJob: function (team) {
+      var s = this.state;
+      if (!s || !team) return s;
+      var job = s.career.jobs[s.career.jobs.length - 1];
+      if (job && job.endYear == null) job.endYear = s.career.year;
+      s.career.year++; // a season concluded; the new job begins next year
+      s.team = { id: team.id, name: team.name, division: team.div || team.division || 'fbs' };
+      s.career.jobs.push({ teamId: team.id, startYear: s.career.year, endYear: null, wins: 0, losses: 0 });
+      var fresh = freshState();
+      s.season = fresh.season; s.season.phase = 'preseason'; s.season.year = s.career.year;
+      s.recruiting = fresh.recruiting;
+      s.program = fresh.program;
+      s.staff = {}; s.staffMarket = [];
+      s.integrity = fresh.integrity;
+      s.integrity.adTrust = Math.round(48 + (team.prestige || 5) * 1.5);
+      s.roster = [];
+      s.screen = 'hq';
+      this.state = normalize(s);
+      if (window.GameProgram) window.GameProgram.initProgram(this.state);
       return this.state;
     },
 

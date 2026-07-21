@@ -60,8 +60,8 @@ npm test           # node tests/run.js
 2. ✅ **Season engine** — schedule, weekly sim, AP Top 25, conference titles, 12-team playoff + bowls, career rollover
 3. ✅ **Game day broadcast** — drive-by-drive sim, TV score bug + field + ticker, momentum, live 4th-down/2pt/onside/tempo decisions
 4. ✅ **Recruiting + portal + NIL** — roster/depth chart that drives ratings, weekly recruiting board, signing-day cutscene, NIL/facilities budget, transfer portal, offseason development
-5. ✅ **Staff** — a 9-role coordinator/position-coach cabinet whose ratings boost offense/defense/special teams/recruiting/development, with a hiring market, staff budget, and loyalty (poaching + wave-6 leak risk)
-6. Scandal / NCAA-violations risk-vs-reward lifecycle
+5. ✅ **Staff** — a 9-role coordinator/position-coach cabinet whose ratings boost offense/defense/special teams/recruiting/development, with a hiring market, staff budget, and loyalty (poaching + leak risk)
+6. ✅ **Scandal / NCAA violations** — a risk-vs-reward compliance system: temptation events (recruiting violations, booster benefits, academic fraud, conduct, personal-conduct allegation) build hidden heat that can trigger investigations, sanctions (probation, scholarship losses, bowl bans, show-cause), AD hot seat, and firing — all consequence-focused
 7. Job carousel / dynasty arc — offers, contracts, reputation that travels
 8. Championship & bowl cutscenes
 9–11. Data tiers: FCS → D-II → D-III

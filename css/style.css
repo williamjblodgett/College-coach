@@ -339,6 +339,47 @@ h1, h2, h3 { margin: 0 0 6px; line-height: 1.15; }
 .ros-ovr { font-weight: 900; text-align: right; }
 .ros-pot { font-size: 11px; text-align: right; }
 
+/* ---- scandal / compliance ---- */
+.scandal-card { background: linear-gradient(135deg, #2a1520, #16101a); border: 1px solid var(--danger); border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow); animation: fade .25s ease; }
+.sc-flag { font-size: 11px; font-weight: 900; letter-spacing: 1px; color: var(--danger); text-transform: uppercase; }
+.sc-title { font-size: 19px; font-weight: 900; margin: 4px 0 6px; }
+.sc-blurb { font-size: 13.5px; color: #d7c4cc; line-height: 1.4; margin-bottom: 12px; }
+.sc-options { display: flex; flex-direction: column; gap: 9px; }
+.ban-note { background: rgba(255,84,104,.12); border: 1px solid var(--danger); border-radius: 10px; padding: 10px 12px; font-weight: 700; font-size: 13px; margin-bottom: 12px; }
+
+.comp-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.comp-label { color: var(--muted); font-size: 13px; }
+.scrutiny { font-weight: 800; font-size: 13px; padding: 3px 10px; border-radius: 8px; }
+.scrutiny.good { color: var(--accent-2); background: rgba(22,201,141,.12); }
+.scrutiny.ok { color: #9fb0c8; background: rgba(159,176,200,.12); }
+.scrutiny.warn { color: var(--accent); background: rgba(255,180,0,.12); }
+.scrutiny.bad { color: var(--danger); background: rgba(255,84,104,.14); }
+.sanction-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.sanction-item { font-size: 12.5px; color: var(--danger); font-weight: 600; }
+
+.verdict-block { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin: 14px 0 4px; text-align: left; }
+.verdict-block.ok { border-color: #9fb0c8; }
+.verdict-block.warn { border-color: var(--accent); background: rgba(255,180,0,.06); }
+.verdict-block.bad { border-color: var(--danger); background: rgba(255,84,104,.07); }
+.vb-head { font-size: 11px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+.vb-sev { font-size: 18px; font-weight: 900; margin: 3px 0 6px; }
+.verdict-block.bad .vb-sev { color: var(--danger); }
+.verdict-block.warn .vb-sev { color: var(--accent); }
+.vb-sanctions { display: flex; flex-direction: column; gap: 3px; }
+.vb-item { font-size: 13px; }
+.vb-line { font-size: 12.5px; }
+
+.fired-screen { display: flex; justify-content: center; padding-top: 3vh; }
+.fired-card { background: var(--panel); border: 1px solid var(--danger); border-radius: 18px; padding: 26px; max-width: 460px; width: 100%; text-align: center; box-shadow: var(--shadow); }
+.fired-eyebrow { font-size: 12px; font-weight: 900; letter-spacing: 2px; color: var(--danger); }
+.fired-title { font-size: 28px; font-weight: 900; margin: 4px 0 8px; }
+.fired-reason { color: #d7c4cc; font-size: 14px; line-height: 1.45; }
+.fired-career { font-size: 12.5px; color: var(--muted); margin: 12px 0; }
+.offer-head { text-align: left; font-weight: 700; font-size: 13px; color: var(--muted); margin: 8px 0 6px; }
+.offer-list { display: flex; flex-direction: column; gap: 8px; }
+.offer-card { display: flex; align-items: center; gap: 12px; text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; color: var(--text); font: inherit; }
+.offer-card:hover { border-color: var(--accent); }
+
 /* ---- staff ---- */
 .staff-effects { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 12px; }
 @media (min-width: 560px) { .staff-effects { grid-template-columns: repeat(6, 1fr); } }

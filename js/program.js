@@ -199,7 +199,9 @@
     weeklyRecruitPoints: function (state) {
       var c = state.coach.ratings || {};
       var sf = GameProgram.staffEffects(state);
-      return Math.round(8 + c.recruiting * 0.09 + state.program.nilLevel * 0.05 + sf.recruiting * 0.4);
+      var pts = 8 + c.recruiting * 0.09 + state.program.nilLevel * 0.05 + sf.recruiting * 0.4;
+      if (window.GameScandal) pts *= window.GameScandal.recruitingPenaltyFactor(state); // NCAA sanctions
+      return Math.round(pts);
     },
 
     // Called each time a week is advanced: grant points + AI competition.
@@ -423,6 +425,7 @@
         state.recruiting.board = GameProgram.generateBoard(rng, team.prestige, state.career.year + 1);
       }
       if (window.GameStaff) window.GameStaff.ensureStaff(state); // wave 5 backfill
+      if (window.GameScandal) window.GameScandal.ensureIntegrity(state); // wave 6 backfill
       return state;
     }
   };

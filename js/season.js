@@ -237,6 +237,7 @@
       s.postseason = { confChamps: {}, confGames: [], cfpSeeds: [], bracket: [], bowls: [], champion: null };
       s.record = { wins: 0, losses: 0, confWins: 0, confLosses: 0 };
       s.started = true;
+      if (window.GameScandal) window.GameScandal.onSeasonStart(state);
       return s;
     },
 
@@ -284,6 +285,7 @@
       s.week++;
       if (s.week > s.totalRegWeeks) s.phase = 'confchamp';
       if (window.GameProgram) window.GameProgram.onWeekAdvanced(state);
+      if (window.GameScandal) window.GameScandal.maybeTrigger(state);
       GameSeason.syncPlayerRecord(state);
       return res;
     },
@@ -301,6 +303,7 @@
       s.week++;
       if (s.week > s.totalRegWeeks) s.phase = 'confchamp';
       if (window.GameProgram) window.GameProgram.onWeekAdvanced(state);
+      if (window.GameScandal) window.GameScandal.maybeTrigger(state);
       GameSeason.syncPlayerRecord(state);
       return { week: wk, games: games, playerGame: playerGame };
     },
@@ -354,11 +357,20 @@
       var ranked = s.rankings.slice();
       var rankOf = {}; ranked.forEach(function (id, i) { rankOf[id] = i; });
 
+      // Postseason ban (NCAA sanction): the player's team is ineligible.
+      var banned = {};
+      if (window.GameScandal && window.GameScandal.postseasonBanned(state)) {
+        banned[state.team.id] = true;
+        s.postseason.playerBanned = true;
+      }
+
       // Highest-ranked conference champions (guarantee up to 5 in the field).
-      var champs = Object.keys(s.postseason.confChamps).map(function (c) { return s.postseason.confChamps[c]; });
+      var champs = Object.keys(s.postseason.confChamps).map(function (c) { return s.postseason.confChamps[c]; })
+        .filter(function (id) { return !banned[id]; });
       champs.sort(function (a, b) { return rankOf[a] - rankOf[b]; });
       var seeds = [];
       var inField = {};
+      Object.keys(banned).forEach(function (id) { inField[id] = true; }); // exclude from at-large too
       champs.slice(0, 5).forEach(function (id) { if (!inField[id]) { seeds.push(id); inField[id] = true; } });
       // Fill to 12 with the best remaining ranked teams (at-large).
       for (var i = 0; i < ranked.length && seeds.length < 12; i++) {
@@ -504,8 +516,18 @@
         champion: s.postseason.champion,
         championName: (T.get(s.postseason.champion) || {}).name || '',
         reputation: state.career.reputation,
-        repDelta: delta
+        repDelta: delta,
+        postseasonBanned: !!s.postseason.playerBanned
       };
+
+      // Compliance review: AD trust, investigation + verdict, sanctions, firing.
+      if (window.GameScandal) {
+        summary.verdict = window.GameScandal.endSeasonReview(state, summary);
+        summary.fired = state.integrity.fired;
+        summary.firedReason = state.integrity.firedReason;
+        summary.adTrust = state.integrity.adTrust;
+        summary.reputation = state.career.reputation; // may have changed from sanctions
+      }
       state.history.push(summary);
 
       // Hand off to the offseason (signing day → portal/budget → rollover).
