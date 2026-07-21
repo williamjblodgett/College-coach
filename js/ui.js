@@ -635,15 +635,22 @@
         } else {
           wrap.appendChild(el('p', { class: 'muted', text: 'BYE week — no game scheduled.' }));
         }
-        wrap.appendChild(el('div', { class: 'btn-row' }, [
-          btn('▶  Sim Week ' + wk, 'primary big', function () {
+        var weekBtns = [];
+        if (myGame) {
+          weekBtns.push(btn('🏟️  Coach This Game', 'primary big', function () { renderGameDay(); }));
+          weekBtns.push(btn('⚡  Quick Sim', 'ghost', function () {
             lastWeekResult = Season.simWeek(s); E.save(); draw(); refreshHero();
-          }),
-          btn('⏩  Sim to Postseason', 'ghost', function () {
-            while (s.season.phase === 'regular') lastWeekResult = Season.simWeek(s);
-            E.save(); draw(); refreshHero();
-          })
-        ]));
+          }));
+        } else {
+          weekBtns.push(btn('▶  Advance Week ' + wk, 'primary big', function () {
+            lastWeekResult = Season.simWeek(s); E.save(); draw(); refreshHero();
+          }));
+        }
+        weekBtns.push(btn('⏩  Sim to Postseason', 'ghost', function () {
+          while (s.season.phase === 'regular') lastWeekResult = Season.simWeek(s);
+          E.save(); draw(); refreshHero();
+        }));
+        wrap.appendChild(el('div', { class: 'btn-row' }, weekBtns));
         // Top games this week (already-played previous week shown via banner; here show scoreboard of last simmed week).
         if (lastWeekResult && lastWeekResult.games) {
           wrap.appendChild(el('h4', { class: 'sec-sub', text: 'Week ' + lastWeekResult.week + ' scoreboard' }));
@@ -863,6 +870,293 @@
       ])
     ]);
     mount(card);
+  }
+
+  // ---- Game Day broadcast (Wave 3) -----------------------------------------
+  var SPEEDS = { slow: 1100, normal: 620, fast: 300 };
+
+  function renderGameDay() {
+    var s = E.state;
+    var Season = window.GameSeason, Sim = window.GameSim;
+    var pg = Season.playerWeekGame(s);
+    if (!pg) { renderSeason(); return; }
+
+    var league = s.season.league;
+    var coach = s.coach;
+    var playerId = s.team.id;
+    var playerSide = pg.home === playerId ? 'home' : 'away';
+    var oppId = pg.home === playerId ? pg.away : pg.home;
+
+    var pr = Sim.ratingsFor(league[playerId], coach, true);
+    var or = Sim.ratingsFor(league[oppId], null, false);
+    var homeCfg = playerSide === 'home'
+      ? { id: pg.home, off: pr.off, def: pr.def, isPlayer: true }
+      : { id: pg.home, off: or.off, def: or.def, isPlayer: false };
+    var awayCfg = playerSide === 'away'
+      ? { id: pg.away, off: pr.off, def: pr.def, isPlayer: true }
+      : { id: pg.away, off: or.off, def: or.def, isPlayer: false };
+
+    var oppRankIdx = s.season.rankings.indexOf(oppId);
+    var stakes = pg.rivalry ? '🔥 Rivalry Game' : (pg.conf ? (T.get(playerId).conf + ' Game') : 'Non-Conference');
+    if (oppRankIdx >= 0 && oppRankIdx < 25) stakes += ' · vs #' + (oppRankIdx + 1);
+
+    var homeTeam = T.get(pg.home), venue = homeTeam.stadium + ' · ' + homeTeam.city + ', ' + homeTeam.st;
+    var g = Sim.create({
+      home: homeCfg, away: awayCfg, playerSide: playerSide,
+      stakes: stakes, neutral: false, venue: venue,
+      seed: (s.season.seed ^ (s.season.week * 40503)) >>> 0
+    });
+
+    var playing = false, speed = SPEEDS.normal, timer = null, wasPlaying = false;
+
+    // ---- build DOM ----
+    var homeU = g.home, awayU = g.away;
+    function abbr(u) { return (T.get(u.id) || {}).nick || u.name; }
+
+    function scoreRow(u, sideKey) {
+      return el('div', { class: 'bug-team', 'data-side': sideKey }, [
+        teamBadge(T.get(u.id), 30),
+        el('span', { class: 'bug-name', text: u.name }),
+        el('span', { class: 'bug-poss', 'data-poss': sideKey }, ['●']),
+        el('span', { class: 'bug-score', 'data-score': sideKey, text: '0' })
+      ]);
+    }
+
+    var bug = el('div', { class: 'bug' }, [
+      el('div', { class: 'bug-teams' }, [ scoreRow(awayU, 'away'), scoreRow(homeU, 'home') ]),
+      el('div', { class: 'bug-center' }, [
+        el('div', { class: 'bug-clock' }, ['', el('span', { class: 'bug-qtr' })]),
+        el('div', { class: 'bug-dd' }),
+        el('div', { class: 'bug-to' })
+      ])
+    ]);
+
+    // Field
+    var ball = el('div', { class: 'ball-mark' });
+    var firstLine = el('div', { class: 'first-line' });
+    var losLine = el('div', { class: 'los-line' });
+    var fieldEndL = el('div', { class: 'endzone left', style: 'background:' + (T.get(awayU.id).colors[0]) });
+    var fieldEndR = el('div', { class: 'endzone right', style: 'background:' + (T.get(homeU.id).colors[0]) });
+    var field = el('div', { class: 'field' }, [
+      fieldEndL, fieldEndR,
+      el('div', { class: 'yard-lines' }, [10,20,30,40,50,40,30,20,10].map(function (n, i) {
+        return el('div', { class: 'yl', style: 'left:' + ((i + 1) * 10) + '%' }, [el('span', { text: n })]);
+      })),
+      losLine, firstLine, ball
+    ]);
+
+    // Momentum meter
+    var moFill = el('div', { class: 'mo-fill' });
+    var momentum = el('div', { class: 'momentum' }, [
+      el('span', { class: 'mo-cap', text: abbr(awayU) }),
+      el('div', { class: 'mo-track' }, [moFill]),
+      el('span', { class: 'mo-cap', text: abbr(homeU) })
+    ]);
+
+    // Ticker
+    var ticker = el('div', { class: 'ticker' });
+
+    // Controls
+    var tempoRow = el('div', { class: 'tempo-row' });
+    var nextBtn = btn('▶ Next Play', 'primary', function () { if (!playing) tick(); });
+    var autoBtn = btn('⏵ Auto', '', function () { toggleAuto(); });
+    var driveBtn = btn('⏭ Drive', 'ghost', function () { runDrive(); });
+    var finishBtn = btn('⏩ Sim to Final', 'ghost', function () { simToFinal(); });
+    var speedSel = el('select', { class: 'select speed', onchange: function (e) { speed = SPEEDS[e.target.value]; } }, [
+      el('option', { value: 'slow', text: '🐢 Slow' }),
+      el('option', { value: 'normal', text: '▶ Normal', selected: 'selected' }),
+      el('option', { value: 'fast', text: '⚡ Fast' })
+    ]);
+    var controls = el('div', { class: 'gd-controls' }, [
+      el('div', { class: 'gd-btns' }, [nextBtn, autoBtn, driveBtn, finishBtn, speedSel]),
+      tempoRow
+    ]);
+
+    var decisionHolder = el('div', { class: 'decision-holder' });
+
+    var screen = el('div', { class: 'screen gameday' }, [
+      el('div', { class: 'gd-head' }, [
+        el('div', { class: 'gd-stakes', text: g.stakes }),
+        el('div', { class: 'gd-venue', text: g.venue })
+      ]),
+      bug, field, momentum, controls, ticker, decisionHolder
+    ]);
+    mount(screen);
+
+    // ---- rendering helpers ----
+    function q(sel) { return screen.querySelector(sel); }
+    function updateBug() {
+      q('[data-score="home"]').textContent = g.home.score;
+      q('[data-score="away"]').textContent = g.away.score;
+      q('.bug-clock').firstChild.textContent = Sim.timeString(g) + ' ';
+      q('.bug-qtr').textContent = Sim.quarterLabel(g);
+      q('.bug-dd').textContent = g.awaitingKickoff ? 'Kickoff' : (g.awaitingPAT ? 'PAT' : (Sim.downLabel(g) + '  ·  ball on ' + ballOnText()));
+      var to = '';
+      q('.bug-to').textContent = '⏱ ' + g.away.timeouts + '  |  ' + g.home.timeouts + ' ⏱';
+      q('[data-poss="home"]').style.opacity = g.poss === 'home' && !g.awaitingKickoff ? '1' : '0';
+      q('[data-poss="away"]').style.opacity = g.poss === 'away' && !g.awaitingKickoff ? '1' : '0';
+    }
+    function ballOnText() {
+      var los = g.los;
+      return los <= 50 ? (abbr(g.poss === 'home' ? g.home : g.away) + ' ' + los) : (abbr(g.poss === 'home' ? g.away : g.home) + ' ' + (100 - los));
+    }
+    function updateField() {
+      if (g.awaitingKickoff || g.awaitingPAT) { ball.style.opacity = '0'; firstLine.style.opacity = '0'; losLine.style.opacity = '0'; return; }
+      ball.style.opacity = '1'; firstLine.style.opacity = '1'; losLine.style.opacity = '1';
+      var spot = Sim.fieldSpot(g); // 0..100 home perspective (home attacks right)
+      ball.style.left = clampPct(spot) + '%';
+      losLine.style.left = clampPct(spot) + '%';
+      var fd = g.poss === 'home' ? Math.min(100, g.los + g.toGo) : Math.max(0, 100 - (g.los + g.toGo));
+      firstLine.style.left = clampPct(g.poss === 'home' ? fd : fd) + '%';
+      ball.textContent = '🏈';
+    }
+    function clampPct(p) { return Math.max(2, Math.min(98, p)); }
+    function updateMomentum() {
+      // g.mo in -100..100 (+home). Fill from center.
+      var pct = 50 + g.mo / 2; // 0..100
+      moFill.style.width = Math.abs(g.mo) / 2 + '%';
+      moFill.style.left = g.mo >= 0 ? '50%' : (50 - Math.abs(g.mo) / 2) + '%';
+      moFill.style.background = g.mo >= 0 ? T.get(g.home.id).colors[0] : T.get(g.away.id).colors[0];
+    }
+    function pushTicker(ev) {
+      if (!ev || !ev.text || ev.tag === 'decision') return;
+      var line = el('div', { class: 'tk-line tk-' + ev.tag }, [
+        el('span', { class: 'tk-tag', text: tagLabel(ev.tag) }),
+        el('span', { class: 'tk-txt', text: ev.text })
+      ]);
+      ticker.insertBefore(line, ticker.firstChild);
+      while (ticker.children.length > 40) ticker.removeChild(ticker.lastChild);
+      if (ev.tag === 'td' || ev.tag === 'fg' || ev.tag === 'int' || ev.tag === 'fumble' || ev.tag === 'onside' || ev.tag === 'two') flash(ev.tag);
+    }
+    function tagLabel(tag) {
+      var m = { run: 'RUN', pass: 'PASS', incomplete: 'INC', sack: 'SACK', td: 'TD', fg: 'FG', fgmiss: 'MISS',
+        punt: 'PUNT', int: 'INT', fumble: 'FUM', downs: 'DOWNS', kick: 'KICK', onside: 'ONSIDE', pat: 'XP',
+        two: '2PT', twofail: '2PT', patmiss: 'XP', half: 'HALF', flag: 'FLAG', safety: 'SAFETY', final: 'FINAL', info: '' };
+      return m[tag] != null ? m[tag] : '•';
+    }
+    function flash(tag) {
+      field.classList.remove('flash-td', 'flash-to');
+      void field.offsetWidth;
+      field.classList.add((tag === 'td' || tag === 'fg' || tag === 'two') ? 'flash-td' : 'flash-to');
+    }
+
+    function renderTempo() {
+      tempoRow.innerHTML = '';
+      if (Sim.isPlayer(g, g.poss) && !g.awaitingKickoff && !g.awaitingPAT && !g.over) {
+        tempoRow.appendChild(el('span', { class: 'tempo-label', text: 'Tempo:' }));
+        [['normal', 'Normal'], ['hurry', 'Hurry-Up'], ['milk', 'Milk Clock']].forEach(function (t) {
+          tempoRow.appendChild(el('button', {
+            class: 'chip tempo' + (g[g.poss].tempo === t[0] ? ' active' : ''),
+            onclick: function () { Sim.decide(g, t[0]); renderTempo(); }
+          }, [t[1]]));
+        });
+      }
+    }
+
+    function refreshAll(ev) { updateBug(); updateField(); updateMomentum(); renderTempo(); if (ev) pushTicker(ev); }
+
+    // ---- decision UI ----
+    function showDecision() {
+      stopAuto(true);
+      var p = g.pending;
+      var title = { fourth_down: '4th Down — Your Call', pat: 'After the Touchdown', kickoff: 'Kickoff Strategy' }[p.kind] || 'Decision';
+      var sub = p.kind === 'fourth_down' ? (Sim.downLabel(g) + ' at the ' + ballOnText()) : '';
+      var card = el('div', { class: 'decision-card' }, [
+        el('div', { class: 'dc-title', text: title }),
+        sub ? el('div', { class: 'dc-sub', text: sub }) : null,
+        el('div', { class: 'dc-options' }, p.options.map(function (o) {
+          return el('button', { class: 'dc-opt' + (p.rec === o.id ? ' rec' : '') + (o.risky ? ' risky' : ''),
+            onclick: function () { choose(o.id); } }, [
+            el('div', { class: 'dc-opt-label', text: o.label + (p.rec === o.id ? '  ✓' : '') }),
+            el('div', { class: 'dc-opt-desc', text: o.desc })
+          ]);
+        }))
+      ]);
+      decisionHolder.innerHTML = '';
+      decisionHolder.appendChild(el('div', { class: 'decision-overlay' }, [card]));
+    }
+    function choose(id) {
+      decisionHolder.innerHTML = '';
+      var ev = Sim.decide(g, id);
+      refreshAll(ev);
+      afterStep();
+      if (wasPlaying) startAuto();
+    }
+
+    // ---- loop ----
+    function tick() {
+      if (g.over) return endGame();
+      if (g.pending) { showDecision(); return; }
+      var ev = Sim.advance(g);
+      if (ev.tag === 'decision') { showDecision(); return; }
+      refreshAll(ev);
+      afterStep();
+    }
+    function afterStep() {
+      if (g.over) { endGame(); return; }
+      if (playing && !g.pending) timer = setTimeout(tick, speed);
+    }
+    function startAuto() { playing = true; wasPlaying = true; autoBtn.textContent = '⏸ Pause'; autoBtn.classList.add('primary'); if (!g.pending && !g.over) tick(); }
+    function stopAuto(keepWas) { playing = false; if (!keepWas) wasPlaying = false; autoBtn.textContent = '⏵ Auto'; autoBtn.classList.remove('primary'); if (timer) clearTimeout(timer); }
+    function toggleAuto() { if (playing) stopAuto(); else startAuto(); }
+    function runDrive() {
+      var startPoss = g.poss, guard = 0;
+      stopAuto();
+      (function step() {
+        if (g.over) return endGame();
+        if (g.pending) { showDecision(); return; }
+        var ev = Sim.advance(g);
+        if (ev.tag === 'decision') { showDecision(); return; }
+        refreshAll(ev);
+        if (g.over) return endGame();
+        if (g.poss !== startPoss || ev.score || guard++ > 40) return; // drive ended
+        timer = setTimeout(step, Math.min(speed, 260));
+      })();
+    }
+    function simToFinal() {
+      stopAuto();
+      Sim.simRemaining(g);
+      // replay only the tail of the log for context
+      ticker.innerHTML = '';
+      g.log.slice(-14).reverse().forEach(pushTicker);
+      refreshAll(null);
+      endGame();
+    }
+
+    function endGame() {
+      stopAuto();
+      if (finishedShown) return; finishedShown = true;
+      var res = g.result;
+      var iWon = res.winnerId === playerId;
+      var myScore = playerSide === 'home' ? res.homeScore : res.awayScore;
+      var oppScore = playerSide === 'home' ? res.awayScore : res.homeScore;
+      var overlay = el('div', { class: 'decision-overlay final-overlay' }, [
+        el('div', { class: 'final-card ' + (iWon ? 'win' : 'loss') }, [
+          el('div', { class: 'fc-result', text: iWon ? 'VICTORY' : 'DEFEAT' }),
+          el('div', { class: 'fc-score' }, [
+            el('div', { class: 'fc-line' }, [teamBadge(T.get(awayU.id), 26), el('span', { text: awayU.name }), el('span', { class: 'fc-num', text: res.awayScore })]),
+            el('div', { class: 'fc-line' }, [teamBadge(T.get(homeU.id), 26), el('span', { text: homeU.name }), el('span', { class: 'fc-num', text: res.homeScore })])
+          ]),
+          g.ot ? el('div', { class: 'fc-ot', text: g.ot + ' OT' }) : null,
+          el('div', { class: 'fc-stat', text: statLine() }),
+          btn('Continue  →', 'primary big', function () {
+            lastWeekResult = Season.commitPlayerResult(s, res.homeScore, res.awayScore);
+            E.save(); seasonTab = 'week'; renderSeason();
+          })
+        ])
+      ]);
+      decisionHolder.innerHTML = '';
+      decisionHolder.appendChild(overlay);
+    }
+    function statLine() {
+      var ph = g[playerSide].stats, po = g[playerSide === 'home' ? 'away' : 'home'].stats;
+      return 'Yards ' + (ph.rush + ph.pass) + ' · 1st downs ' + ph.first + ' · TO ' + ph.to;
+    }
+    var finishedShown = false;
+
+    // initial paint
+    refreshAll({ tag: 'kick', text: g.log[0].text });
+    updateBug(); updateField();
   }
 
   function toast(msg) {

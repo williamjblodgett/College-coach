@@ -16,7 +16,7 @@
   var E = window.GameEngine;
   var T = window.TeamData;
 
-  var TOTAL_REG_WEEKS = 13;
+  var TOTAL_REG_WEEKS = 14;   // 12 games + up to 2 byes → reliable placement
   var GAMES_PER_TEAM = 12;
   var MAX_CONF_GAMES = 9;
 
@@ -60,7 +60,7 @@
   }
 
   // ---- schedule -------------------------------------------------------------
-  function buildSchedule(teams, rng) {
+  function buildSchedule(teams, rng, priorityId) {
     var byId = {}; teams.forEach(function (t) { byId[t.id] = t; });
     var games = [];
     var gcount = {}, ccount = {}, played = {};
@@ -84,6 +84,19 @@
         if (byId[r]) add(t.id, r, byId[r].conf === t.conf, true);
       });
     });
+
+    // 1b) Guarantee the player's team a full slate before general scheduling,
+    // while opponents still have open games (prefer conference foes).
+    if (priorityId && byId[priorityId]) {
+      var pconf = byId[priorityId].conf;
+      var cands = shuffle(teams.slice(), rng).sort(function (a, b) {
+        return (b.conf === pconf ? 1 : 0) - (a.conf === pconf ? 1 : 0);
+      });
+      for (var pi = 0; pi < cands.length && gcount[priorityId] < GAMES_PER_TEAM; pi++) {
+        if (cands[pi].id === priorityId) continue;
+        add(priorityId, cands[pi].id, cands[pi].conf === pconf, false);
+      }
+    }
 
     // 2) Conference games (partial round-robin, capped per team).
     var byConf = {};
@@ -118,8 +131,14 @@
 
     // 4) Assign weeks greedily so no team plays twice in a week.
     var busy = {}; teams.forEach(function (t) { busy[t.id] = {}; });
-    // Schedule rivalry/conf games first for nicer spacing, then the rest.
-    games.sort(function (x, y) { return (y.rivalry ? 1 : 0) - (x.rivalry ? 1 : 0); });
+    // Assign the player's games first (so they always fit the 14-week slate),
+    // then rivalries, then the rest.
+    games.sort(function (x, y) {
+      var px = (priorityId && (x.home === priorityId || x.away === priorityId)) ? 1 : 0;
+      var py = (priorityId && (y.home === priorityId || y.away === priorityId)) ? 1 : 0;
+      if (px !== py) return py - px;
+      return (y.rivalry ? 1 : 0) - (x.rivalry ? 1 : 0);
+    });
     var scheduled = [];
     games.forEach(function (g) {
       for (var w = 1; w <= TOTAL_REG_WEEKS; w++) {
@@ -139,6 +158,22 @@
   }
 
   // ---- game sim -------------------------------------------------------------
+  // Update league standings from a game whose scores are already set.
+  function applyResult(g, league) {
+    var H = league[g.home], A = league[g.away];
+    var hs = g.homeScore, as = g.awayScore;
+    H.pf += hs; H.pa += as; A.pf += as; A.pa += hs;
+    var homeWon = hs > as;
+    if (homeWon) { H.w++; A.l++; } else { A.w++; H.l++; }
+    if (g.conf) {
+      if (homeWon) { H.cw++; A.cl++; } else { A.cw++; H.cl++; }
+    }
+    g.winner = homeWon ? g.home : g.away;
+    g.played = true;
+    return g;
+  }
+
+  // Quick-sim a game to a final score (used for non-player games).
   function simGame(g, league, rng) {
     var hr = league[g.home].rating + (g.neutral ? 0 : 3); // home-field edge
     var ar = league[g.away].rating;
@@ -148,17 +183,8 @@
     hs = clamp(Math.round(hs), 0, 70);
     as = clamp(Math.round(as), 0, 70);
     if (hs === as) { if (rng() < 0.5) hs += 3; else as += 3; } // break ties (OT)
-    g.homeScore = hs; g.awayScore = as; g.played = true;
-
-    var H = league[g.home], A = league[g.away];
-    H.pf += hs; H.pa += as; A.pf += as; A.pa += hs;
-    var homeWon = hs > as;
-    if (homeWon) { H.w++; A.l++; } else { A.w++; H.l++; }
-    if (g.conf) {
-      if (homeWon) { H.cw++; A.cl++; } else { A.cw++; H.cl++; }
-    }
-    g.winner = homeWon ? g.home : g.away;
-    return g;
+    g.homeScore = hs; g.awayScore = as;
+    return applyResult(g, league);
   }
 
   // ---- rankings -------------------------------------------------------------
@@ -197,7 +223,7 @@
         };
       });
       s.league = league;
-      s.schedule = buildSchedule(teams, rng);
+      s.schedule = buildSchedule(teams, rng, state.team.id);
       s.rankings = computeRankings(league, teams.map(function (t) { return t.id; }));
       s.year = state.career.year;
       s.week = 1;
@@ -224,6 +250,36 @@
 
     gamesInWeek: function (state, week) {
       return state.season.schedule.filter(function (g) { return g.week === week; });
+    },
+
+    // The player's game in the current week (null on a bye).
+    playerWeekGame: function (state) {
+      var id = state.team.id;
+      return GameSeason.gamesInWeek(state, state.season.week).filter(function (g) {
+        return g.home === id || g.away === id;
+      })[0] || null;
+    },
+
+    // Commit a player-coached final score, then quick-sim the rest of the week
+    // and advance. Mirrors simWeek's bookkeeping but leaves the player's game
+    // to the broadcast result.
+    commitPlayerResult: function (state, homeScore, awayScore) {
+      var s = state.season;
+      if (s.phase !== 'regular') return null;
+      var wk = s.week;
+      var pg = GameSeason.playerWeekGame(state);
+      if (pg && !pg.played) {
+        pg.homeScore = homeScore; pg.awayScore = awayScore;
+        applyResult(pg, s.league);
+      }
+      var rng = E.makeRng((s.seed ^ (wk * 2654435761)) >>> 0);
+      GameSeason.gamesInWeek(state, wk).forEach(function (g) { if (!g.played) simGame(g, s.league, rng); });
+      s.rankings = computeRankings(s.league, Object.keys(s.league));
+      var res = { week: wk, games: GameSeason.gamesInWeek(state, wk), playerGame: pg };
+      s.week++;
+      if (s.week > s.totalRegWeeks) s.phase = 'confchamp';
+      GameSeason.syncPlayerRecord(state);
+      return res;
     },
 
     // Sim every game in the current week; advance the pointer.
