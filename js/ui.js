@@ -542,6 +542,7 @@
         }),
         btn('📋 Roster', 'ghost', function () { renderRoster('hq'); }),
         btn('🧑‍🏫 Staff', 'ghost', function () { renderStaff('hq'); }),
+        window.GameCareer ? btn('🛍️ Store', 'ghost', function () { renderStore('hq'); }) : null,
         btn('💾 Save', 'ghost', function () { E.save(); toast('Career saved.'); }),
         btn('⬇ Export', 'ghost', function () {
           var t = E.serialize();
@@ -1250,6 +1251,69 @@
     draw();
   }
 
+  // ---- Store (Wave 8): spend salary --------------------------------------
+  function renderStore(from) {
+    var s = E.state, C = window.GameCareer;
+    applyTheme(T.get(s.team.id));
+    var back = from === 'hq' ? function () { s.screen = 'hq'; E.save(); renderHQ(); } : function () { s.screen = 'hq'; E.save(); renderHQ(); };
+    var cats = ['Program', 'Career', 'Legacy', 'Lifestyle'];
+    var catLabel = { Program: '🏈 Program Investments', Career: '💼 Your Personal Team', Legacy: '🏛️ Legacy', Lifestyle: '💎 Lifestyle & Flex' };
+    var catBlurb = {
+      Program: 'Reinvest in the team — recruiting, development, facilities.',
+      Career: 'Protect and advance your own career.',
+      Legacy: 'Cement your place in history.',
+      Lifestyle: 'Enjoy the money. Some of it even helps.'
+    };
+
+    function draw() {
+      var walletBar = el('div', { class: 'store-wallet' }, [
+        el('span', { class: 'sw-amt', text: '💰 $' + (s.career.wallet || 0).toFixed(1) + 'M' }),
+        el('span', { class: 'sw-sub muted', text: 'available · $' + (s.career.spent || 0).toFixed(1) + 'M spent all-time' })
+      ]);
+
+      var sections = cats.map(function (cat) {
+        var items = C.STORE.filter(function (it) { return it.cat === cat; });
+        return el('div', { class: 'panel store-section' }, [
+          el('h3', { text: catLabel[cat] }),
+          el('p', { class: 'muted store-blurb', text: catBlurb[cat] }),
+          el('div', { class: 'store-grid' }, items.map(function (it) {
+            var owned = it.once && C.owns(s, it.id);
+            var afford = (s.career.wallet || 0) >= it.cost;
+            return el('div', { class: 'store-item' + (owned ? ' owned' : '') }, [
+              el('div', { class: 'si-emoji', text: it.emoji }),
+              el('div', { class: 'si-body' }, [
+                el('div', { class: 'si-name', text: it.name }),
+                el('div', { class: 'si-desc muted', text: it.desc })
+              ]),
+              owned
+                ? el('span', { class: 'si-owned', text: '✓ Owned' })
+                : el('button', { class: 'btn si-buy', disabled: !afford ? 'disabled' : null,
+                    onclick: function () {
+                      var res = C.buy(s, it.id);
+                      if (res.ok) { toast('Bought ' + it.name + '!'); E.save(); draw(); }
+                    } }, ['$' + it.cost + 'M'])
+            ]);
+          }))
+        ]);
+      });
+
+      var screen = el('div', { class: 'screen store-screen' }, [
+        el('div', { class: 'screen-head' }, [
+          el('h2', { text: 'The Coach’s Store' }),
+          el('p', { class: 'muted', text: 'Spend your salary. Program buys help the team; some personal buys quietly help too.' })
+        ]),
+        walletBar
+      ].concat(sections).concat([
+        el('div', { class: 'sticky-footer' }, [
+          el('div', { class: 'sf-info' }, [el('span', { text: 'Wallet $' + (s.career.wallet || 0).toFixed(1) + 'M' })]),
+          el('div', { class: 'sf-actions' }, [btn('← Back', 'ghost', back)])
+        ])
+      ]));
+      mount(screen);
+    }
+    draw();
+  }
+
   // ---- Job carousel (Wave 7) -----------------------------------------------
   function renderCarousel() {
     var s = E.state, C = window.GameCareer;
@@ -1748,6 +1812,7 @@
     renderSigningDay: renderSigningDay,
     renderOffseason: renderOffseason,
     renderCarousel: renderCarousel,
+    renderStore: renderStore,
     renderFired: renderFired,
     teamBadge: teamBadge,
     toast: toast,

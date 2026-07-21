@@ -155,7 +155,11 @@
 
     applyEffects: function (state, fx) {
       var i = state.integrity, out = {};
-      if (fx.heat) { i.heat = clamp(i.heat + fx.heat, 0, 100); out.heat = fx.heat; }
+      if (fx.heat) {
+        var heatMult = window.GameCareer ? window.GameCareer.storeEffects(state).heatMult : 1; // PR firm
+        var h = Math.round(fx.heat * heatMult);
+        i.heat = clamp(i.heat + h, 0, 100); out.heat = h;
+      }
       if (fx.adTrust) { i.adTrust = clamp(i.adTrust + fx.adTrust, 0, 100); out.adTrust = fx.adTrust; }
       if (fx.reputation) { state.career.reputation = clamp(state.career.reputation + fx.reputation, 0, 100); out.reputation = fx.reputation; }
       if (fx.recruitPoints && state.recruiting) { state.recruiting.points += fx.recruitPoints; out.recruitPoints = fx.recruitPoints; }
@@ -192,7 +196,8 @@
       if (i.scholarshipPenalty > 0) i.scholarshipPenalty--;
 
       // Investigation roll.
-      var invChance = clamp((i.heat - 25) / 120 + (cohesion < 55 ? 0.06 : 0) + (i._severeFlag ? 0.35 : 0), 0, 0.9);
+      var invMult = window.GameCareer ? window.GameCareer.storeEffects(state).invMult : 1; // private investigator
+      var invChance = clamp(((i.heat - 25) / 120 + (cohesion < 55 ? 0.06 : 0) + (i._severeFlag ? 0.35 : 0)) * invMult, 0, 0.9);
       var verdict = { year: state.career.year, investigated: false, severity: 'none', sanctions: [], fired: false, heatBefore: i.heat };
 
       if (rng() < invChance) {

@@ -12,6 +12,41 @@
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
+  // ---- the store: a wide catalog you buy with accrued salary --------------
+  // effect keys — ongoing: recruiting, development, jobInterest, walletInterest,
+  //   heatMult, invMult; immediate (applied once at purchase): reputation,
+  //   facilities, legacy, media.
+  var STORE = [
+    // Program investments (help the team win)
+    { id: 'analytics', name: 'Recruiting Analytics Service', cat: 'Program', cost: 2.5, emoji: '📈', desc: 'A data team that finds and closes recruits.', effect: { recruiting: 5 } },
+    { id: 'sportsci', name: 'Sports Science Lab', cat: 'Program', cost: 3.5, emoji: '🔬', desc: 'Cutting-edge player development and recovery.', effect: { development: 0.6 } },
+    { id: 'charterjet', name: 'Charter Jet Program', cat: 'Program', cost: 4, emoji: '✈️', desc: 'Fly coast to coast on the recruiting trail.', effect: { recruiting: 4 } },
+    { id: 'nutrition', name: 'Elite Nutrition Program', cat: 'Program', cost: 1.5, emoji: '🥗', desc: 'Fuel the roster for a long season.', effect: { development: 0.35 } },
+    { id: 'indoorfac', name: 'Indoor Practice Facility', cat: 'Program', cost: 6, emoji: '🏟️', desc: 'Practice through any weather.', effect: { facilities: 12 }, once: true },
+    { id: 'rechub', name: 'Recruiting War Room', cat: 'Program', cost: 3, emoji: '🗂️', desc: 'A dedicated space and staff for the class.', effect: { recruiting: 3, development: 0.15 } },
+
+    // Personal team (protect + advance your career)
+    { id: 'agent', name: 'Super-Agent', cat: 'Career', cost: 2.5, emoji: '🤝', desc: 'Draws bigger job offers your way.', effect: { jobInterest: 14 } },
+    { id: 'prfirm', name: 'PR & Crisis Firm', cat: 'Career', cost: 3, emoji: '📰', desc: 'Manages your image — less heat from every misstep.', effect: { heatMult: 0.7 } },
+    { id: 'fixer', name: 'Private Investigator', cat: 'Career', cost: 2, emoji: '🕵️', desc: 'Keeps problems quiet — lowers investigation risk.', effect: { invMult: 0.7 } },
+    { id: 'advisor', name: 'Financial Advisor', cat: 'Career', cost: 1.5, emoji: '💹', desc: 'Grows your money — earn interest on your wallet.', effect: { walletInterest: 0.15 } },
+    { id: 'mediatrainer', name: 'Media Trainer', cat: 'Career', cost: 1, emoji: '🎙️', desc: 'Polish at the podium (+media).', effect: { media: 6 }, once: true },
+    { id: 'buyoutins', name: 'Buyout Insurance', cat: 'Career', cost: 2, emoji: '🛡️', desc: 'A softer landing if it all goes wrong (+AD goodwill).', effect: { reputation: 3 }, once: true },
+
+    // Legacy + lifestyle (reputation, legacy points, and pure flex)
+    { id: 'foundation', name: 'Charitable Foundation', cat: 'Legacy', cost: 3, emoji: '💗', desc: 'Give back to the community (+reputation, +legacy).', effect: { reputation: 6, legacy: 20 }, once: true },
+    { id: 'hofcampaign', name: 'Hall-of-Fame Campaign', cat: 'Legacy', cost: 4, emoji: '🏅', desc: 'Burnish the legend (+legacy).', effect: { legacy: 30 }, once: true },
+    { id: 'statue', name: 'Commission a Statue', cat: 'Legacy', cost: 8, emoji: '🗿', desc: 'Bronze, outside the stadium. Immortality (+big legacy).', effect: { legacy: 60, reputation: 4 }, once: true },
+    { id: 'lakehouse', name: 'Lake House', cat: 'Lifestyle', cost: 2, emoji: '🏡', desc: 'Somewhere to recharge in the offseason.', effect: { legacy: 5 }, once: true },
+    { id: 'luxurycar', name: 'Luxury Sports Car', cat: 'Lifestyle', cost: 0.4, emoji: '🏎️', desc: 'Arrive in style.', effect: {}, once: true },
+    { id: 'yacht', name: 'Yacht', cat: 'Lifestyle', cost: 7, emoji: '🛥️', desc: 'The ultimate flex.', effect: { legacy: 8 }, once: true },
+    { id: 'artcollection', name: 'Art Collection', cat: 'Lifestyle', cost: 2.5, emoji: '🖼️', desc: 'Taste, acquired.', effect: {}, once: true },
+    { id: 'golfclub', name: 'Country Club Membership', cat: 'Lifestyle', cost: 0.6, emoji: '⛳', desc: 'Network on the back nine.', effect: { jobInterest: 3 }, once: true },
+    { id: 'ranch', name: 'Sprawling Ranch', cat: 'Lifestyle', cost: 5, emoji: '🐎', desc: 'Wide-open space, all yours.', effect: { legacy: 10 }, once: true }
+  ];
+  var STORE_MAP = {};
+  STORE.forEach(function (it) { STORE_MAP[it.id] = it; });
+
   // Base annual salary ($M) by program prestige (1-10).
   function salaryFor(prestige, reputation) {
     var base = 0.25 + Math.pow(prestige, 1.55) * 0.11;   // ~0.4M (p1) .. ~9M (p10)
@@ -34,9 +69,11 @@
     // Pay one season of salary into the wallet; tick the contract down.
     payoutSalary: function (state) {
       var c = state.contract || {};
-      state.career.wallet = Math.round((state.career.wallet + (c.salary || 0)) * 10) / 10;
+      var interest = GameCareer.storeEffects(state).walletInterest; // financial advisor
+      var pay = (c.salary || 0) * (1 + interest);
+      state.career.wallet = Math.round((state.career.wallet + pay) * 10) / 10;
       if (c.yearsLeft > 0) c.yearsLeft--;
-      return c.salary || 0;
+      return pay;
     },
 
     // Renew/extend the contract when staying put (bigger if you're winning).
@@ -61,8 +98,10 @@
       var over = wins - expected;
       var rng = E.makeRng((state.seed ^ (state.career.year * 0x1abcf) ^ Math.round(rep)) >>> 0);
 
-      // Interest is a function of reputation + overperformance + titles.
-      var interest = (rep - 50) * 0.9 + over * 6 + (summary && summary.wonConf ? 10 : 0) + (summary && summary.wonNatl ? 22 : 0);
+      // Interest is a function of reputation + overperformance + titles (a
+      // super-agent / networking raise your market profile).
+      var interest = (rep - 50) * 0.9 + over * 6 + (summary && summary.wonConf ? 10 : 0) + (summary && summary.wonNatl ? 22 : 0)
+        + GameCareer.storeEffects(state).jobInterest;
       if (interest < 8) return [];
 
       // Prestige ceiling the market will consider you for.
@@ -122,6 +161,43 @@
     ensureContract: function (state) {
       if (!state.contract || !state.contract.salary) GameCareer.initContract(state);
       return state;
+    },
+
+    // ---- store --------------------------------------------------------------
+    STORE: STORE, STORE_MAP: STORE_MAP,
+    owns: function (state, id) { return (state.career.purchases || []).indexOf(id) >= 0; },
+
+    buy: function (state, id) {
+      var it = STORE_MAP[id];
+      if (!it) return { ok: false };
+      if (it.once && GameCareer.owns(state, id)) return { ok: false, reason: 'owned' };
+      if ((state.career.wallet || 0) < it.cost) return { ok: false, reason: 'funds' };
+      state.career.wallet = Math.round((state.career.wallet - it.cost) * 10) / 10;
+      state.career.spent = Math.round(((state.career.spent || 0) + it.cost) * 10) / 10;
+      (state.career.purchases = state.career.purchases || []).push(id);
+      // Immediate (one-time) effects.
+      var e = it.effect || {};
+      if (e.reputation) state.career.reputation = clamp(state.career.reputation + e.reputation, 0, 100);
+      if (e.legacy) state.career.legacyPoints = (state.career.legacyPoints || 0) + e.legacy;
+      if (e.facilities && state.program) state.program.facilitiesLevel = clamp(state.program.facilitiesLevel + e.facilities, 0, 100);
+      if (e.media && state.coach && state.coach.ratings) state.coach.ratings.media = clamp(state.coach.ratings.media + e.media, 0, 100);
+      return { ok: true, item: it };
+    },
+
+    // Ongoing effects summed from owned items.
+    storeEffects: function (state) {
+      var acc = { recruiting: 0, development: 0, jobInterest: 0, walletInterest: 0, heatMult: 1, invMult: 1 };
+      (state.career.purchases || []).forEach(function (id) {
+        var it = STORE_MAP[id]; if (!it) return;
+        var e = it.effect || {};
+        if (e.recruiting) acc.recruiting += e.recruiting;
+        if (e.development) acc.development += e.development;
+        if (e.jobInterest) acc.jobInterest += e.jobInterest;
+        if (e.walletInterest) acc.walletInterest += e.walletInterest;
+        if (e.heatMult) acc.heatMult *= e.heatMult;
+        if (e.invMult) acc.invMult *= e.invMult;
+      });
+      return acc;
     }
   };
 

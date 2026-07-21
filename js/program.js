@@ -200,6 +200,7 @@
       var c = state.coach.ratings || {};
       var sf = GameProgram.staffEffects(state);
       var pts = 8 + c.recruiting * 0.09 + state.program.nilLevel * 0.05 + sf.recruiting * 0.4;
+      if (window.GameCareer) pts += window.GameCareer.storeEffects(state).recruiting; // store: analytics/jet
       if (window.GameScandal) pts *= window.GameScandal.recruitingPenaltyFactor(state); // NCAA sanctions
       return Math.round(pts);
     },
@@ -351,7 +352,8 @@
         // Develop.
         var headroom = Math.max(0, p.pot - p.ovr);
         var traitBoost = { normal: 1, impact: 1.6, star: 2.2, elite: 3 }[p.dev] || 1;
-        var gain = (1 + rng() * 2) * traitBoost + fac * 0.02 + (c.development - 62) * 0.02 + sf.development;
+        var storeDev = window.GameCareer ? window.GameCareer.storeEffects(state).development : 0;
+        var gain = (1 + rng() * 2) * traitBoost + fac * 0.02 + (c.development - 62) * 0.02 + sf.development + storeDev;
         p.ovr = clamp(Math.round(p.ovr + Math.min(headroom, gain)), 40, 99);
         // Advance class.
         p.year = YEARS[Math.min(3, YEARS.indexOf(p.year) + 1)];

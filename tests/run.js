@@ -891,6 +891,54 @@ function serve() {
   ok(await page.isVisible('text=Wallet') === false || true, 'carousel renders');
   await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/carousel.png'), fullPage: true });
 
+  // ---------- STORE: spend salary ----------
+  group('Store: purchases + effects');
+  const store = await page.evaluate(() => {
+    const E = window.GameEngine, C = window.GameCareer, P = window.GameProgram, T = window.TeamData;
+    const out = {};
+    E.newCareer({ id: 'c', name: 'Coach', source: 'custom', ratings: { recruiting: 70, offense: 70, defense: 70, development: 70, discipline: 70, motivation: 70, media: 60 } }, T.get('michigan'));
+    out.catalog = C.STORE.length;
+    E.state.career.wallet = 30;
+    const recBefore = P.weeklyRecruitPoints(E.state);
+    C.buy(E.state, 'analytics');       // +recruiting
+    const recAfter = P.weeklyRecruitPoints(E.state);
+    out.recruitingHelps = recAfter > recBefore;
+    out.walletDeducted = E.state.career.wallet === 27.5;
+    out.canRebuyOnce = C.buy(E.state, 'analytics').ok; // once=false for analytics? analytics has no once -> repeatable
+    const repBefore = E.state.career.reputation;
+    C.buy(E.state, 'foundation');      // once, +reputation immediate
+    out.repImmediate = E.state.career.reputation > repBefore;
+    out.ownedFlag = C.owns(E.state, 'foundation');
+    out.cannotRebuyOwned = C.buy(E.state, 'foundation').ok === false;
+    C.buy(E.state, 'prfirm');
+    out.heatMult = C.storeEffects(E.state).heatMult < 1;
+    // cannot buy what you can't afford
+    E.state.career.wallet = 0.1;
+    out.blockedNoFunds = C.buy(E.state, 'statue').ok === false;
+    return out;
+  });
+  ok(store.catalog >= 18, 'store has a wide catalog (' + store.catalog + ' items)');
+  ok(store.walletDeducted, 'a purchase deducts from the wallet');
+  ok(store.recruitingHelps, 'a program buy improves recruiting');
+  ok(store.repImmediate, 'a legacy buy applies an immediate reputation gain');
+  ok(store.ownedFlag && store.cannotRebuyOwned, 'one-time items cannot be re-bought');
+  ok(store.heatMult, 'a PR buy reduces heat gained');
+  ok(store.blockedNoFunds, 'purchases are blocked without funds');
+
+  group('UI: store screen');
+  await page.evaluate(() => {
+    const E = window.GameEngine, T = window.TeamData;
+    E.newCareer({ id: 'c', name: 'Coach', source: 'custom', ratings: { recruiting: 75, offense: 75, defense: 75, development: 75, discipline: 72, motivation: 75, media: 65 } }, T.get('michigan'));
+    E.state.career.wallet = 20; window.GameUI.renderStore('hq');
+  });
+  await page.waitForSelector('.store-item');
+  const items = await page.evaluate(() => document.querySelectorAll('.store-item').length);
+  ok(items >= 18, 'store screen renders the catalog (' + items + ')');
+  const wBefore = await page.evaluate(() => window.GameEngine.state.career.wallet);
+  await page.click('.store-item .si-buy:not([disabled])');
+  const wAfter = await page.evaluate(() => window.GameEngine.state.career.wallet);
+  ok(wAfter < wBefore, 'buying from the UI spends money');
+
   group('No runtime errors');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));
 
