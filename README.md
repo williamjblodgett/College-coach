@@ -57,8 +57,8 @@ npm test           # node tests/run.js
 ## Roadmap (built in vertical waves — one feature = one commit = one deploy)
 
 1. ✅ **Foundation** — FBS data, coach roster + create-a-coach, setup flow, HQ, PWA, tests
-2. Season engine — schedule, weekly sim, polls, bowl/playoff bids
-3. Game day broadcast — drive sim, high-leverage decisions, momentum, rivalries
+2. ✅ **Season engine** — schedule, weekly sim, AP Top 25, conference titles, 12-team playoff + bowls, career rollover
+3. ✅ **Game day broadcast** — drive-by-drive sim, TV score bug + field + ticker, momentum, live 4th-down/2pt/onside/tempo decisions
 4. Recruiting + transfer portal + NIL/budget + signing-day cutscene
 5. Staff hires (coordinators/position coaches) that affect gameplay
 6. Scandal / NCAA-violations risk-vs-reward lifecycle
