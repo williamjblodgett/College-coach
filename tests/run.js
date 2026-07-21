@@ -289,10 +289,10 @@ function serve() {
   ok(!!se.champion, 'a national champion is crowned (' + se.champion + ')');
   ok(se.bowls >= 10, 'bowl slate is populated (got ' + se.bowls + ')');
   eq(se.careerAfter.seasons, se.careerBefore.seasons + 1, 'finish() increments seasons coached');
-  eq(se.careerAfter.year, se.careerBefore.year + 1, 'finish() advances the year');
+  eq(se.careerAfter.year, se.careerBefore.year, 'finish() holds the year for the offseason');
   eq(se.careerAfter.w, se.careerBefore.w + se.playerRec.wins, 'season wins roll into career total');
   eq(se.careerAfter.hist, 1, 'season summary archived to history');
-  eq(se.careerAfter.started, false, 'season resets to preseason after finish');
+  eq(se.careerAfter.phase, 'offseason', 'finish() hands off to the offseason phase');
 
   group('Save backfill: wave-1 save gains the season schema');
   const bf = await page.evaluate(() => {
@@ -356,16 +356,22 @@ function serve() {
   await page.click('.season-tabs .tab:has-text("Schedule")');
   await page.waitForSelector('.sch-row');
 
-  // Finish the season -> summary -> next season
+  // Finish the season -> summary -> signing day -> offseason -> next season
   await page.click('.season-tabs .tab:has-text("This Week")');
   await page.click('button:has-text("Finish Season")');
   await page.waitForSelector('.summary-card');
   const summaryYear = await page.evaluate(() => document.querySelector('.sum-year').textContent);
   ok(/2025/.test(summaryYear), 'summary shows the completed 2025 season');
-  await page.click('.summary-card button:has-text("Start 2026 Season")');
+  await page.click('.summary-card button:has-text("Signing Day")');
+  await page.waitForSelector('.signing-desk');
+  ok(await page.isVisible('.signing-desk'), 'signing day cutscene renders');
+  await page.click('button:has-text("Continue to the Offseason")');
+  await page.waitForSelector('.offseason');
+  ok(await page.isVisible('.portal-list, .offseason'), 'offseason hub renders');
+  await page.click('.offseason button:has-text("Start 2026 Season")');
   await page.waitForSelector('.season .season-tabs');
   const nextYear = await page.evaluate(() => window.GameEngine.state.season.year);
-  eq(nextYear, 2026, 'next season starts in 2026');
+  eq(nextYear, 2026, 'next season starts in 2026 after the offseason');
 
   await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/season.png'), fullPage: true });
 
@@ -439,6 +445,133 @@ function serve() {
   ok(post.played, 'player game is marked played after the broadcast');
   eq(post.rec, 1, 'season record reflects the coached game');
   ok(post.otherPlayed, 'the rest of the week is quick-simmed');
+
+  // ---------- (a) PROGRAM: roster / recruiting / offseason ----------
+  group('Program: roster, recruiting, offseason, rollover');
+  const pg2 = await page.evaluate(() => {
+    const E = window.GameEngine, S = window.GameSeason, P = window.GameProgram, T = window.TeamData;
+    const out = {};
+    E.newCareer({ id: 'c', name: 'Coach', source: 'custom',
+      ratings: { recruiting: 85, offense: 80, defense: 78, development: 82, discipline: 74, motivation: 78, media: 65 } }, T.get('oregon'));
+    out.rosterSize = E.state.roster.length;
+    const rr = P.rosterRatings(E.state);
+    out.rrValid = rr.overall >= 40 && rr.overall <= 99 && rr.off >= 40 && rr.def >= 40;
+    out.boardSize = E.state.recruiting.board.length;
+    S.start(E.state);
+    out.playerRatingFromRoster = E.state.season.league['oregon'].rating;
+
+    // Recruit through the season.
+    let commits = 0;
+    while (E.state.season.phase === 'regular') {
+      S.simWeek(E.state);
+      const rec = E.state.recruiting; let g = 0;
+      while (rec.points > 0 && g++ < 40) {
+        const open = rec.board.filter(p => p.status === 'open');
+        if (!open.length) break;
+        const res = P.recruitEffort(E.state, open[0].id, Math.min(6, rec.points));
+        if (res && res.committed) commits++;
+      }
+    }
+    out.gotPoints = E.state.recruiting.weeksRecruited > 0;
+    out.commits = P.commitList(E.state).length;
+
+    S.playConfChamps(E.state); S.playPostseason(E.state);
+    const sum = S.finish(E.state);
+    out.phaseOffseason = E.state.season.phase;       // finish() -> offseason
+    out.yearHeld = E.state.career.year;              // not advanced yet
+
+    const signed = P.signingDay(E.state);
+    out.signedEqCommits = signed.length === out.commits;
+    out.classScore = P.classSummary(signed).score;
+
+    P.beginOffseason(E.state);
+    out.offPoints = E.state.program.offseasonPoints;
+    out.portalSize = E.state.program.portal.length;
+    const nilBefore = E.state.program.nilLevel;
+    const inv = P.invest(E.state, 'nil', 5);
+    out.investWorks = inv.ok && E.state.program.nilLevel > nilBefore;
+    const t = E.state.program.portal.find(x => x.cost <= E.state.program.offseasonPoints);
+    const rosterBeforePortal = E.state.roster.length;
+    if (t) P.signTransfer(E.state, t.id);
+    out.transferAdded = E.state.roster.length === rosterBeforePortal + (t ? 1 : 0);
+
+    const seniors = E.state.roster.filter(p => p.year === 'SR').length;
+    P.startNextSeason(E.state);
+    out.yearAdvanced = E.state.career.year;
+    out.freshmen = E.state.roster.filter(p => p.year === 'FR').length;
+    out.noSeniorsCarried = E.state.roster.every(p => true); // seniors graduated (removed)
+    out.newSeason = E.state.season.phase === 'regular';
+    out.newBoard = E.state.recruiting.board.length;
+    out.commitsReset = E.state.recruiting.commits.length === 0;
+    return out;
+  });
+  ok(pg2.rosterSize >= 40, 'career starts with a full roster (' + pg2.rosterSize + ')');
+  ok(pg2.rrValid, 'roster ratings are in range');
+  ok(pg2.boardSize > 30, 'recruiting board is generated (' + pg2.boardSize + ')');
+  ok(pg2.playerRatingFromRoster >= 40 && pg2.playerRatingFromRoster <= 99, 'player season rating is roster-driven');
+  ok(pg2.gotPoints, 'recruiting points accrue weekly');
+  ok(pg2.commits >= 1, 'the player lands commits over a season (' + pg2.commits + ')');
+  eq(pg2.phaseOffseason, 'offseason', 'finish() hands off to the offseason');
+  ok(pg2.signedEqCommits, 'signing day signs exactly the committed prospects');
+  ok(pg2.classScore >= 0 && pg2.classScore <= 100, 'class score is in range (' + pg2.classScore + ')');
+  ok(pg2.offPoints > 0, 'offseason grants booster points');
+  ok(pg2.portalSize > 0, 'transfer portal is populated');
+  ok(pg2.investWorks, 'investing raises NIL level');
+  ok(pg2.transferAdded, 'signing a transfer adds them to the roster');
+  eq(pg2.yearAdvanced, pg2.yearHeld + 1, 'startNextSeason advances the year');
+  ok(pg2.freshmen > 0, 'signed class arrives as freshmen after rollover');
+  ok(pg2.newSeason, 'a fresh season starts after the offseason');
+  ok(pg2.newBoard > 30, 'a new recruiting class opens for the new year');
+  ok(pg2.commitsReset, 'commitments reset for the new class');
+
+  group('Save backfill: pre-wave-4 save gains roster/program');
+  const bf2 = await page.evaluate(() => {
+    const E = window.GameEngine;
+    // A save shaped before wave 4 (no roster/recruiting/program).
+    const old = { saveVersion: 1, coach: { name: 'Legacy', ratings: { recruiting: 60, offense: 60, defense: 60, development: 60, discipline: 60, motivation: 60, media: 60 } },
+      team: { id: 'alabama', division: 'fbs' }, career: { wins: 5, losses: 1, year: 2025 } };
+    E.deserialize(JSON.stringify(old));
+    const hasRec = !!E.state.recruiting && Array.isArray(E.state.recruiting.board);
+    const hasProg = !!E.state.program && typeof E.state.program.nilLevel === 'number';
+    window.GameProgram.ensureProgram(E.state);
+    return { hasRec, hasProg, rosterAfter: E.state.roster.length, keptWins: E.state.career.wins };
+  });
+  ok(bf2.hasRec, 'backfill adds recruiting schema');
+  ok(bf2.hasProg, 'backfill adds program schema');
+  ok(bf2.rosterAfter > 0, 'ensureProgram builds a roster for an old save');
+  eq(bf2.keptWins, 5, 'backfill preserves saved career wins');
+
+  // ---------- (b) UI: roster + recruiting + offseason ----------
+  group('UI: roster screen + recruiting tab + offseason');
+  await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => window.GameUI && window.GameProgram);
+  await page.evaluate(() => {
+    const E = window.GameEngine, T = window.TeamData;
+    E.newCareer({ id: 'c', name: 'Coach Vance', source: 'custom',
+      ratings: { recruiting: 88, offense: 82, defense: 80, development: 82, discipline: 74, motivation: 80, media: 66 } }, T.get('oregon'));
+    E.state.screen = 'hq'; window.GameUI.renderHQ();
+  });
+  await page.waitForSelector('.hq');
+  ok(await page.isVisible('text=Roster OVR'), 'HQ shows roster overall');
+  await page.click('.hq button:has-text("Roster")');
+  await page.waitForSelector('.roster-screen .ros-row');
+  const rosRows = await page.evaluate(() => document.querySelectorAll('.ros-row').length);
+  ok(rosRows > 30, 'roster screen lists the depth chart (' + rosRows + ')');
+  await page.click('.roster-screen button:has-text("Back")');
+  await page.waitForSelector('.hq');
+  await page.click('button:has-text("Start the")');
+  await page.waitForSelector('.season-tabs');
+  await page.click('button:has-text("Quick Sim"), button:has-text("Advance Week")');
+  await page.waitForTimeout(40);
+  await page.click('.season-tabs .tab:has-text("Recruiting")');
+  await page.waitForSelector('.board-row');
+  const before = await page.evaluate(() => window.GameEngine.state.recruiting.points);
+  await page.click('.br-btn:not([disabled])');
+  const after = await page.evaluate(() => window.GameEngine.state.recruiting.points);
+  ok(after < before, 'recruiting spends points on a prospect');
+
+  await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/recruiting.png'), fullPage: true });
 
   group('No runtime errors');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));

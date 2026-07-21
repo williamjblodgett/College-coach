@@ -222,6 +222,11 @@
           w: 0, l: 0, cw: 0, cl: 0, pf: 0, pa: 0, champ: false
         };
       });
+      // Roster-driven strength for the player's program (wave 4).
+      if (window.GameProgram && league[state.team.id]) {
+        window.GameProgram.ensureProgram(state);
+        league[state.team.id].rating = window.GameProgram.playerTeamRating(state);
+      }
       s.league = league;
       s.schedule = buildSchedule(teams, rng, state.team.id);
       s.rankings = computeRankings(league, teams.map(function (t) { return t.id; }));
@@ -278,6 +283,7 @@
       var res = { week: wk, games: GameSeason.gamesInWeek(state, wk), playerGame: pg };
       s.week++;
       if (s.week > s.totalRegWeeks) s.phase = 'confchamp';
+      if (window.GameProgram) window.GameProgram.onWeekAdvanced(state);
       GameSeason.syncPlayerRecord(state);
       return res;
     },
@@ -294,6 +300,7 @@
       var wk = s.week;
       s.week++;
       if (s.week > s.totalRegWeeks) s.phase = 'confchamp';
+      if (window.GameProgram) window.GameProgram.onWeekAdvanced(state);
       GameSeason.syncPlayerRecord(state);
       return { week: wk, games: games, playerGame: playerGame };
     },
@@ -501,11 +508,10 @@
       };
       state.history.push(summary);
 
-      // Advance to next season; reset the season object for a fresh slate.
-      state.career.year++;
-      state.season = E.freshState().season;
-      state.season.year = state.career.year;
-      state.season.phase = 'preseason';
+      // Hand off to the offseason (signing day → portal/budget → rollover).
+      // The year is advanced later by GameProgram.startNextSeason so signing
+      // day and development can run against the just-finished season's data.
+      s.phase = 'offseason';
       return summary;
     }
   };

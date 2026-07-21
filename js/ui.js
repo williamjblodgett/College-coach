@@ -414,7 +414,9 @@
     var s = E.state;
     var team = T.get(s.team.id) || { name: s.team.name, colors: ['#333','#777'], conf: '', city: '', st: '', prestige: 5, stadium: '', cap: 0, emoji: '🏈', nick: '' };
     var coach = s.coach;
-    var power = E.teamPower(team, coach);
+    if (window.GameProgram) window.GameProgram.ensureProgram(s);
+    var rr = window.GameProgram && s.roster.length ? window.GameProgram.rosterRatings(s) : null;
+    var power = rr ? rr.overall : E.teamPower(team, coach);
 
     document.documentElement.style.setProperty('--team-primary', team.colors[0]);
     document.documentElement.style.setProperty('--team-secondary', team.colors[1]);
@@ -442,11 +444,11 @@
     }
 
     var stats = el('div', { class: 'stat-grid' }, [
-      stat('Program Power', power, 'prestige + staff'),
+      stat('Roster OVR', power, rr ? ('OFF ' + rr.off + ' · DEF ' + rr.def) : 'prestige'),
       stat('Reputation', s.career.reputation, 'career'),
       stat('Record', s.career.wins + '–' + s.career.losses, 'all-time'),
-      stat('Prestige', team.prestige + '/10', 'program'),
-      stat('Stadium', (team.cap ? (team.cap.toLocaleString()) : '—'), team.stadium || '')
+      stat('NIL', s.program.nilLevel, 'level'),
+      stat('Facilities', s.program.facilitiesLevel, 'level')
     ]);
 
     function skillBar(k) {
@@ -494,6 +496,7 @@
           E.save();
           renderSeason();
         }),
+        btn('📋 Roster', 'ghost', function () { renderRoster('hq'); }),
         btn('💾 Save', 'ghost', function () { E.save(); toast('Career saved.'); }),
         btn('⬇ Export', 'ghost', function () {
           var t = E.serialize();
@@ -541,7 +544,7 @@
   }
 
   function subTabs(active, onPick) {
-    var tabs = [['week', 'This Week'], ['schedule', 'Schedule'], ['rankings', 'Top 25'], ['standings', 'Standings']];
+    var tabs = [['week', 'This Week'], ['recruiting', 'Recruiting'], ['schedule', 'Schedule'], ['rankings', 'Top 25'], ['standings', 'Standings']];
     return el('div', { class: 'tabs season-tabs' }, tabs.map(function (t) {
       return el('button', { class: 'tab' + (active === t[0] ? ' active' : ''),
         onclick: function () { onPick(t[0]); } }, [t[1]]);
@@ -585,6 +588,7 @@
     function draw() {
       content.innerHTML = '';
       if (seasonTab === 'week') content.appendChild(weekTab());
+      else if (seasonTab === 'recruiting') content.appendChild(recruitingTab());
       else if (seasonTab === 'schedule') content.appendChild(scheduleTab());
       else if (seasonTab === 'rankings') content.appendChild(rankingsTab());
       else if (seasonTab === 'standings') content.appendChild(standingsTab());
@@ -824,6 +828,67 @@
       ].concat(rows));
     }
 
+    // -- Recruiting tab --
+    function recruitingTab() {
+      var P = window.GameProgram;
+      P.ensureProgram(s);
+      var rec = s.recruiting;
+      var commits = P.commitList(s);
+      var summary = P.classSummary(commits.map(function (c) { return { stars: c.stars, proj: c.proj }; }));
+      var wrap = el('div');
+
+      wrap.appendChild(el('div', { class: 'rec-head' }, [
+        el('div', { class: 'rec-stat' }, [el('div', { class: 'rec-val', text: rec.points }), el('div', { class: 'rec-lbl', text: 'Points' })]),
+        el('div', { class: 'rec-stat' }, [el('div', { class: 'rec-val', text: commits.length }), el('div', { class: 'rec-lbl', text: 'Commits' })]),
+        el('div', { class: 'rec-stat' }, [el('div', { class: 'rec-val', text: summary.score }), el('div', { class: 'rec-lbl', text: 'Class Score' })]),
+        el('div', { class: 'rec-stat' }, [el('div', { class: 'rec-val', text: 'NIL ' + s.program.nilLevel }), el('div', { class: 'rec-lbl', text: 'Level' })])
+      ]));
+
+      if (rec.signed) {
+        wrap.appendChild(el('p', { class: 'muted', text: 'Signing day is done — this class is locked. New prospects open up next season.' }));
+      } else {
+        wrap.appendChild(el('p', { class: 'rec-note', text: 'Spend recruiting points on prospects to raise their lean. Land them before rivals do — high-star recruits are harder for smaller programs. Class locks at signing day.' }));
+      }
+
+      if (commits.length) {
+        wrap.appendChild(el('h4', { class: 'sec-sub', text: '✅ Your Commits (' + commits.length + ')' }));
+        wrap.appendChild(el('div', { class: 'commit-strip' }, commits.map(function (p) {
+          return el('div', { class: 'commit-chip' }, [
+            el('span', { class: 'stars s' + p.stars, text: '★'.repeat(p.stars) }),
+            el('span', { class: 'commit-pos', text: p.pos }),
+            el('span', { class: 'commit-name', text: p.name })
+          ]);
+        })));
+      }
+
+      wrap.appendChild(el('h4', { class: 'sec-sub', text: 'Recruiting Board' }));
+      var list = el('div', { class: 'board' });
+      var open = rec.board.filter(function (p) { return p.status === 'open'; }).slice(0, 40);
+      if (!open.length) list.appendChild(el('p', { class: 'muted', text: 'No open prospects remain on the board.' }));
+      open.forEach(function (p) {
+        var leanPct = Math.round(p.lean);
+        var row = el('div', { class: 'board-row' }, [
+          el('span', { class: 'br-rank', text: '#' + p.rank }),
+          el('span', { class: 'stars s' + p.stars, text: '★'.repeat(p.stars) }),
+          el('span', { class: 'br-pos', text: p.pos }),
+          el('span', { class: 'br-name', text: p.name }),
+          el('span', { class: 'br-ovr', text: p.proj }),
+          el('span', { class: 'br-lean' }, [el('span', { class: 'br-lean-fill', style: 'width:' + leanPct + '%' })]),
+          rec.signed ? null : el('button', {
+            class: 'btn br-btn', disabled: rec.points <= 0 ? 'disabled' : null,
+            onclick: function () {
+              var res = P.recruitEffort(s, p.id, Math.min(4, rec.points));
+              if (res && res.committed) toast('🎉 ' + p.name + ' commits to ' + T.get(s.team.id).name + '!');
+              E.save(); draw();
+            }
+          }, ['Recruit'])
+        ]);
+        list.appendChild(row);
+      });
+      wrap.appendChild(list);
+      return wrap;
+    }
+
     var heroHolder = el('div');
     function refreshHero() { heroHolder.innerHTML = ''; heroHolder.appendChild(seasonHero(s)); }
     var tabHolder = el('div');
@@ -832,6 +897,7 @@
     var footer = el('div', { class: 'sticky-footer' }, [
       el('div', { class: 'sf-info' }, [el('span', { text: window.GameSeason.phaseLabel(s) })]),
       el('div', { class: 'sf-actions' }, [
+        btn('📋 Roster', 'ghost', function () { renderRoster('season'); }),
         btn('🏛️ HQ', 'ghost', function () { s.screen = 'hq'; E.save(); renderHQ(); }),
         btn('💾 Save', 'ghost', function () { E.save(); toast('Saved.'); })
       ])
@@ -862,14 +928,190 @@
         el('div', { class: 'sum-rep', text: 'Reputation ' + (sum.repDelta >= 0 ? '+' : '') + sum.repDelta + ' → ' + sum.reputation }),
         champ ? el('div', { class: 'sum-natl', text: 'National Champion: ' + champ.name + ' ' + champ.nick }) : null,
         el('div', { class: 'btn-row', style: 'justify-content:center;margin-top:18px' }, [
-          btn('🏈  Start ' + s.career.year + ' Season', 'primary big', function () {
-            window.GameSeason.ensureStarted(s); s.screen = 'season'; E.save(); renderSeason();
-          }),
-          btn('🏛️  Program HQ', 'ghost', function () { s.screen = 'hq'; E.save(); renderHQ(); })
+          btn('✍️  Continue to Signing Day  →', 'primary big', function () { renderSigningDay(); })
         ])
       ])
     ]);
     mount(card);
+  }
+
+  // ---- Signing Day cutscene (Wave 4) ---------------------------------------
+  function renderSigningDay() {
+    var s = E.state, P = window.GameProgram;
+    var signed = P.signingDay(s);
+    E.save();
+    var sum = P.classSummary(signed);
+    var team = T.get(s.team.id);
+
+    var reveal = el('div', { class: 'signing-list' });
+    var card = el('div', { class: 'screen signing-screen' }, [
+      el('div', { class: 'signing-desk' }, [
+        el('div', { class: 'desk-eyebrow', text: '🖊️ NATIONAL SIGNING DAY · ' + (s.recruiting.classYear) + ' CLASS' }),
+        el('div', { class: 'desk-team' }, [teamBadge(team, 40), el('span', { text: team.name + ' ' + team.nick })]),
+        el('div', { class: 'desk-score' }, [
+          el('div', { class: 'ds-num', text: sum.score }),
+          el('div', { class: 'ds-lbl', text: 'CLASS SCORE' })
+        ]),
+        el('div', { class: 'desk-stars' }, [5, 4, 3, 2].map(function (st) {
+          return el('span', { class: 'ds-star' }, [el('b', { text: sum.byStar[st] || 0 }), el('span', { class: 'stars s' + st, text: '★'.repeat(st) })]);
+        }))
+      ]),
+      reveal,
+      el('div', { class: 'btn-row', style: 'justify-content:center;margin-top:16px' }, [
+        btn('Continue to the Offseason  →', 'primary big', function () { P.beginOffseason(s); E.save(); renderOffseason(); })
+      ])
+    ]);
+    mount(card);
+
+    // Reveal signees one at a time for a little theatre.
+    if (!signed.length) {
+      reveal.appendChild(el('p', { class: 'muted', text: 'No signees this cycle — build more interest next year.' }));
+      return;
+    }
+    var i = 0;
+    (function revealNext() {
+      if (i >= signed.length) return;
+      var p = signed[i++];
+      var row = el('div', { class: 'signee', style: 'animation-delay:0s' }, [
+        el('span', { class: 'stars s' + p.stars, text: '★'.repeat(p.stars) }),
+        el('span', { class: 'signee-pos', text: p.pos }),
+        el('span', { class: 'signee-name', text: p.name }),
+        el('span', { class: 'signee-ovr', text: 'proj ' + p.proj })
+      ]);
+      reveal.appendChild(row);
+      setTimeout(revealNext, 180);
+    })();
+  }
+
+  // ---- Offseason hub (Wave 4): portal + NIL/facilities ---------------------
+  function renderOffseason() {
+    var s = E.state, P = window.GameProgram;
+    var nextYear = s.career.year + 1;
+
+    function draw() {
+      var prog = s.program;
+      var content = el('div', { class: 'screen offseason' }, [
+        el('div', { class: 'screen-head' }, [
+          el('h2', { text: nextYear + ' Offseason' }),
+          el('p', { class: 'muted', text: 'Spend booster points on the transfer portal, NIL, and facilities before next season.' })
+        ]),
+        el('div', { class: 'off-points' }, [
+          el('span', { class: 'op-num', text: prog.offseasonPoints }), el('span', { text: ' booster points to spend' })
+        ]),
+        // NIL + facilities investment
+        el('div', { class: 'panel' }, [
+          el('h3', { text: '💰 NIL & Facilities' }),
+          investRow('NIL Collective', 'nil', prog.nilLevel, 'Boosts recruiting pull and player retention.'),
+          investRow('Facilities', 'facilities', prog.facilitiesLevel, 'Boosts player development each offseason.')
+        ]),
+        // Transfer portal
+        portalPanel(),
+        // Departures
+        prog.departures && prog.departures.length ? el('div', { class: 'panel' }, [
+          el('h3', { text: '🚪 Entered the Portal (' + prog.departures.length + ')' }),
+          el('div', { class: 'dep-list' }, prog.departures.map(function (d) {
+            return el('div', { class: 'dep-row' }, [
+              el('span', { class: 'stars s' + d.stars, text: '★'.repeat(d.stars) }),
+              el('span', { class: 'dep-pos', text: d.pos }),
+              el('span', { class: 'dep-name', text: d.name }),
+              el('span', { class: 'dep-ovr', text: d.ovr })
+            ]);
+          }))
+        ]) : null,
+        el('div', { class: 'btn-row', style: 'margin-top:16px' }, [
+          btn('🏈  Start ' + nextYear + ' Season  →', 'primary big', function () {
+            P.startNextSeason(s); s.screen = 'season'; seasonTab = 'week'; lastWeekResult = null; E.save(); renderSeason();
+          }),
+          btn('📋 View Roster', 'ghost', function () { renderRoster('offseason'); })
+        ])
+      ]);
+      mount(content);
+    }
+
+    function investRow(label, kind, level, desc) {
+      return el('div', { class: 'invest-row' }, [
+        el('div', { class: 'invest-info' }, [
+          el('div', { class: 'invest-label', text: label + ' — Level ' + level }),
+          el('div', { class: 'invest-desc muted', text: desc }),
+          el('span', { class: 'meter wide' }, [el('span', { class: 'meter-fill', style: 'width:' + level + '%' })])
+        ]),
+        el('div', { class: 'invest-btns' }, [
+          btn('+1', 'ghost', function () { if (P.invest(s, kind, 1).ok) { E.save(); draw(); } }),
+          btn('+5', 'ghost', function () { if (P.invest(s, kind, 5).ok) { E.save(); draw(); } })
+        ])
+      ]);
+    }
+
+    function portalPanel() {
+      var portal = (s.program.portal || []);
+      return el('div', { class: 'panel' }, [
+        el('h3', { text: '🔁 Transfer Portal' }),
+        portal.length ? el('div', { class: 'portal-list' }, portal.map(function (t) {
+          return el('div', { class: 'portal-row' + (t.signed ? ' signed' : '') }, [
+            el('span', { class: 'stars s' + t.stars, text: '★'.repeat(t.stars) }),
+            el('span', { class: 'pt-pos', text: t.pos }),
+            el('span', { class: 'pt-name', text: t.name + ' · ' + t.year }),
+            el('span', { class: 'pt-ovr', text: 'OVR ' + t.ovr }),
+            t.signed
+              ? el('span', { class: 'pt-signed', text: '✓ Signed' })
+              : el('button', { class: 'btn pt-btn', disabled: s.program.offseasonPoints < t.cost ? 'disabled' : null,
+                  onclick: function () { if (P.signTransfer(s, t.id).ok) { toast('Signed ' + t.name + '!'); E.save(); draw(); } } }, ['Sign · ' + t.cost + 'pt'])
+          ]);
+        })) : el('p', { class: 'muted', text: 'No transfers available.' })
+      ]);
+    }
+
+    draw();
+  }
+
+  // ---- Roster / depth chart (Wave 4) ---------------------------------------
+  function renderRoster(from) {
+    var s = E.state, P = window.GameProgram;
+    P.ensureProgram(s);
+    var rr = P.rosterRatings(s);
+    var back = from === 'offseason' ? function () { renderOffseason(); }
+      : from === 'season' ? function () { renderSeason(); }
+      : function () { s.screen = 'hq'; E.save(); renderHQ(); };
+
+    var groups = [['OFF', 'Offense'], ['DEF', 'Defense'], ['ST', 'Special Teams']];
+    var posOrder = { QB: 1, RB: 2, WR: 3, TE: 4, OL: 5, DL: 6, LB: 7, CB: 8, S: 9, K: 10, P: 11 };
+
+    var panels = groups.map(function (grp) {
+      var players = s.roster.filter(function (p) { return p.group === grp[0]; })
+        .sort(function (a, b) { return (posOrder[a.pos] - posOrder[b.pos]) || (b.ovr - a.ovr); });
+      return el('div', { class: 'panel' }, [
+        el('h3', { text: grp[1] })
+      ].concat(players.map(function (p) {
+        return el('div', { class: 'ros-row' + (p.starter ? ' starter' : '') }, [
+          el('span', { class: 'ros-pos', text: p.pos }),
+          el('span', { class: 'stars s' + p.stars, text: '★'.repeat(p.stars) }),
+          el('span', { class: 'ros-name', text: p.name + (p.transfer ? ' ⇄' : '') }),
+          el('span', { class: 'ros-yr', text: p.year }),
+          el('span', { class: 'ros-ovr', text: p.ovr }),
+          el('span', { class: 'ros-pot muted', text: p.pot > p.ovr ? '↗' + p.pot : '—' })
+        ]);
+      })));
+    });
+
+    var screen = el('div', { class: 'screen roster-screen' }, [
+      el('div', { class: 'screen-head' }, [
+        el('h2', { text: T.get(s.team.id).name + ' Roster' }),
+        el('p', { class: 'muted', text: 'Depth chart — starters highlighted. Overall ' + rr.overall + ' (OFF ' + rr.off + ' · DEF ' + rr.def + ').' })
+      ]),
+      el('div', { class: 'stat-grid' }, [
+        rosterStat('Roster OVR', rr.overall), rosterStat('Offense', rr.off), rosterStat('Defense', rr.def),
+        rosterStat('NIL', s.program.nilLevel), rosterStat('Facilities', s.program.facilitiesLevel)
+      ]),
+      el('div', { class: 'panel-grid roster-grid' }, panels),
+      el('div', { class: 'sticky-footer' }, [
+        el('div', { class: 'sf-info' }, [el('span', { text: s.roster.length + ' players' })]),
+        el('div', { class: 'sf-actions' }, [btn('← Back', 'ghost', back)])
+      ])
+    ]);
+    mount(screen);
+  }
+  function rosterStat(label, val) {
+    return el('div', { class: 'stat' }, [el('div', { class: 'stat-val', text: val }), el('div', { class: 'stat-label', text: label })]);
   }
 
   // ---- Game Day broadcast (Wave 3) -----------------------------------------
@@ -887,7 +1129,7 @@
     var playerSide = pg.home === playerId ? 'home' : 'away';
     var oppId = pg.home === playerId ? pg.away : pg.home;
 
-    var pr = Sim.ratingsFor(league[playerId], coach, true);
+    var pr = window.GameProgram ? window.GameProgram.playerUnitRatings(s) : Sim.ratingsFor(league[playerId], coach, true);
     var or = Sim.ratingsFor(league[oppId], null, false);
     var homeCfg = playerSide === 'home'
       ? { id: pg.home, off: pr.off, def: pr.def, isPlayer: true }
@@ -1180,6 +1422,9 @@
     renderTitle: renderTitle,
     renderHQ: renderHQ,
     renderSeason: renderSeason,
+    renderRoster: renderRoster,
+    renderSigningDay: renderSigningDay,
+    renderOffseason: renderOffseason,
     teamBadge: teamBadge,
     toast: toast,
     // exposed for tests

@@ -59,7 +59,7 @@ npm test           # node tests/run.js
 1. ✅ **Foundation** — FBS data, coach roster + create-a-coach, setup flow, HQ, PWA, tests
 2. ✅ **Season engine** — schedule, weekly sim, AP Top 25, conference titles, 12-team playoff + bowls, career rollover
 3. ✅ **Game day broadcast** — drive-by-drive sim, TV score bug + field + ticker, momentum, live 4th-down/2pt/onside/tempo decisions
-4. Recruiting + transfer portal + NIL/budget + signing-day cutscene
+4. ✅ **Recruiting + portal + NIL** — roster/depth chart that drives ratings, weekly recruiting board, signing-day cutscene, NIL/facilities budget, transfer portal, offseason development
 5. Staff hires (coordinators/position coaches) that affect gameplay
 6. Scandal / NCAA-violations risk-vs-reward lifecycle
 7. Job carousel / dynasty arc — offers, contracts, reputation that travels

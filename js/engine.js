@@ -113,7 +113,25 @@
         },
         record: { wins: 0, losses: 0, confWins: 0, confLosses: 0 }
       },
-      roster: [],                 // populated by later waves
+      roster: [],                 // player objects (wave 4): {id,name,pos,group,year,stars,ovr,pot,dev}
+      // Recruiting class + weekly effort (wave 4).
+      recruiting: {
+        classYear: 2026,
+        points: 0,                // recruiting effort points to spend
+        board: [],                // prospect objects
+        commits: [],              // prospect ids committed to the player
+        signed: false,
+        weeksRecruited: 0
+      },
+      // Program resources: NIL, facilities, budget, transfer portal (wave 4).
+      program: {
+        offseasonPoints: 0,       // points to allocate each offseason
+        nilLevel: 30,             // 0-100, boosts recruiting + retention
+        facilitiesLevel: 30,      // 0-100, boosts player development
+        portal: [],               // incoming transfer pool (offseason)
+        departures: [],           // players who left this offseason
+        signedClass: []           // most recent signed class (for the cutscene)
+      },
       history: [],                // season summaries
       settings: {
         sound: true,
@@ -159,8 +177,11 @@
         // Seed reputation off program prestige a touch so bigger jobs feel bigger.
         s.career.reputation = Math.round(45 + (team.prestige || 5) * 1.2);
       }
+      s.recruiting.classYear = s.career.year + 1;
       s.screen = 'hq';
       this.state = normalize(s);
+      // Generate the initial roster + recruiting board (wave 4).
+      if (window.GameProgram && team) window.GameProgram.initProgram(this.state);
       return this.state;
     },
 

@@ -258,6 +258,87 @@ h1, h2, h3 { margin: 0 0 6px; line-height: 1.15; }
 .sum-rep { font-weight: 800; color: var(--accent-2); margin-top: 6px; }
 .sum-natl { color: var(--muted); font-size: 13px; margin-top: 8px; }
 
+/* ---- stars ---- */
+.stars { font-size: 12px; letter-spacing: -1px; }
+.stars.s5 { color: #ffd400; }
+.stars.s4 { color: #ffb400; }
+.stars.s3 { color: #9fb0c8; }
+.stars.s2 { color: #6b7a92; }
+
+/* ---- recruiting ---- */
+.rec-head { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 6px 0 12px; }
+.rec-stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; text-align: center; }
+.rec-val { font-size: 20px; font-weight: 900; }
+.rec-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.rec-note { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
+.commit-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.commit-chip { display: inline-flex; align-items: center; gap: 6px; background: rgba(22,201,141,.12); border: 1px solid var(--accent-2); border-radius: 8px; padding: 5px 9px; font-size: 12px; }
+.commit-pos { color: var(--muted); font-weight: 700; }
+.commit-name { font-weight: 600; }
+.board { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.board-row { display: grid; grid-template-columns: 34px 54px 32px 1fr 34px 70px auto; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.board-row:last-child { border-bottom: none; }
+.br-rank { color: var(--muted); font-size: 11px; }
+.br-pos { color: var(--muted); font-weight: 700; }
+.br-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br-ovr { font-weight: 800; text-align: right; }
+.br-lean { height: 8px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.br-lean-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+.br-btn { padding: 6px 10px; font-size: 12px; }
+.br-btn[disabled] { opacity: .4; cursor: not-allowed; }
+
+/* ---- signing day ---- */
+.signing-screen { padding-top: 2vh; }
+.signing-desk { background: linear-gradient(135deg, #1a2440, #0b0e14); border: 1px solid var(--accent); border-radius: 16px; padding: 18px; text-align: center; box-shadow: var(--shadow); }
+.desk-eyebrow { font-size: 12px; font-weight: 900; letter-spacing: 1px; color: var(--accent); }
+.desk-team { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 20px; font-weight: 900; margin: 8px 0; }
+.desk-score { margin: 6px 0; }
+.ds-num { font-size: 44px; font-weight: 900; background: linear-gradient(180deg,#fff,#ffcf5c); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ds-lbl { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+.desk-stars { display: flex; justify-content: center; gap: 14px; margin-top: 6px; }
+.ds-star { display: flex; flex-direction: column; align-items: center; font-size: 12px; }
+.ds-star b { font-size: 18px; }
+.signing-list { display: flex; flex-direction: column; gap: 5px; margin: 14px 0; }
+.signee { display: grid; grid-template-columns: 60px 34px 1fr auto; align-items: center; gap: 8px; padding: 9px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; animation: signIn .35s ease; }
+@keyframes signIn { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+.signee-pos { color: var(--muted); font-weight: 700; }
+.signee-name { font-weight: 700; }
+.signee-ovr { color: var(--muted); font-size: 12px; }
+
+/* ---- offseason ---- */
+.off-points { text-align: center; margin: 6px 0 14px; font-size: 14px; color: var(--muted); }
+.op-num { font-size: 26px; font-weight: 900; color: var(--accent); }
+.invest-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.invest-row:last-child { border-bottom: none; }
+.invest-info { flex: 1; }
+.invest-label { font-weight: 800; font-size: 14px; }
+.invest-desc { font-size: 12px; margin: 2px 0 6px; }
+.meter.wide { display: block; height: 8px; }
+.invest-btns { display: flex; gap: 6px; }
+.invest-btns .btn { padding: 8px 12px; }
+.portal-list, .dep-list { display: flex; flex-direction: column; gap: 4px; }
+.portal-row, .dep-row { display: grid; grid-template-columns: 54px 32px 1fr auto auto; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.portal-row:last-child, .dep-row:last-child { border-bottom: none; }
+.portal-row.signed { opacity: .55; }
+.pt-pos, .dep-pos { color: var(--muted); font-weight: 700; }
+.pt-name, .dep-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-ovr, .dep-ovr { font-weight: 800; color: var(--muted); font-size: 12px; }
+.pt-signed { color: var(--accent-2); font-weight: 800; font-size: 12px; }
+.pt-btn { padding: 6px 10px; font-size: 12px; }
+.pt-btn[disabled] { opacity: .4; cursor: not-allowed; }
+
+/* ---- roster ---- */
+.roster-grid { grid-template-columns: 1fr; }
+@media (min-width: 720px) { .roster-grid { grid-template-columns: 1fr 1fr; } }
+.ros-row { display: grid; grid-template-columns: 34px 54px 1fr 34px 34px 40px; align-items: center; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.ros-row:last-child { border-bottom: none; }
+.ros-row.starter { background: rgba(255,180,0,.07); border-radius: 6px; }
+.ros-pos { color: var(--muted); font-weight: 800; font-size: 11px; }
+.ros-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ros-yr { color: var(--muted); font-size: 11px; }
+.ros-ovr { font-weight: 900; text-align: right; }
+.ros-pot { font-size: 11px; text-align: right; }
+
 /* ---- game day broadcast ---- */
 .gameday { padding-bottom: 40px; }
 .gd-head { text-align: center; margin-bottom: 10px; }
