@@ -97,12 +97,20 @@
         reputation: 50,           // portable prestige, 0-100
         legacyPoints: 0
       },
-      // Current in-season state (populated by wave 2).
+      // Current in-season state (season engine, wave 2).
       season: {
         started: false,
-        week: 0,
-        schedule: [],
-        results: [],
+        phase: 'preseason',       // preseason|regular|confchamp|postseason|complete
+        year: 2025,
+        week: 0,                  // next week to play (1-based); 0 = not started
+        totalRegWeeks: 13,
+        seed: 0,
+        schedule: [],             // global matchups: {week,home,away,homeScore,awayScore,played,conf,rivalry,neutral,tag}
+        league: {},               // teamId -> {rating,w,l,cw,cl,pf,pa,champ}
+        rankings: [],             // ordered teamIds (full), UI shows top 25
+        postseason: {             // filled as postseason progresses
+          confChamps: {}, confGames: [], cfpSeeds: [], bracket: [], bowls: [], champion: null
+        },
         record: { wins: 0, losses: 0, confWins: 0, confLosses: 0 }
       },
       roster: [],                 // populated by later waves

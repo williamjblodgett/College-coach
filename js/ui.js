@@ -474,17 +474,33 @@
         : el('p', { class: 'muted', text: 'No fixed rivals on file.' })
     ]);
 
+    var Season = window.GameSeason;
+    var inProgress = s.season.started && s.season.phase !== 'preseason' && s.season.phase !== 'complete';
+    var seasonCtaLabel = inProgress ? ('▶  Continue Season · ' + Season.phaseLabel(s))
+      : ('🏈  Start the ' + s.career.year + ' Season');
+    var lastYear = s.history.length ? s.history[s.history.length - 1] : null;
+
     var nextPanel = el('div', { class: 'panel next-panel' }, [
       el('h3', { text: '📅 Season Hub' }),
-      el('p', { class: 'muted', text: 'The weekly season engine arrives in Wave 2: schedule, sims, polls, and bowl bids. For now, your program office is set up and your career is saved.' }),
+      inProgress
+        ? el('p', { class: 'muted', text: 'Your season is underway — ' + Season.phaseLabel(s) + '. Record ' + s.season.record.wins + '–' + s.season.record.losses + '.' })
+        : el('p', { class: 'muted', text: 'Set your program on the field: 12-game slate, weekly sims, the AP Top 25, conference title races, and a 12-team Playoff.' }),
+      lastYear ? el('p', { class: 'muted', text: 'Last season (' + lastYear.year + '): ' + lastYear.wins + '–' + lastYear.losses +
+        (lastYear.wonNatl ? ' · 🏆 National Champions' : (lastYear.wonConf ? ' · 🥇 Conference Champions' : (lastYear.finalRank ? ' · #' + lastYear.finalRank + ' final' : ''))) }) : null,
       el('div', { class: 'btn-row' }, [
+        btn(seasonCtaLabel, 'primary', function () {
+          Season.ensureStarted(s);
+          s.screen = 'season';
+          E.save();
+          renderSeason();
+        }),
         btn('💾 Save', 'ghost', function () { E.save(); toast('Career saved.'); }),
-        btn('⬇ Export Save', 'ghost', function () {
+        btn('⬇ Export', 'ghost', function () {
           var t = E.serialize();
           navigator.clipboard && navigator.clipboard.writeText(t);
           prompt('Copy your save (also copied to clipboard):', t);
         }),
-        btn('↩ Main Menu', 'ghost', function () { E.save(); renderTitle(); })
+        btn('↩ Menu', 'ghost', function () { E.save(); renderTitle(); })
       ])
     ]);
 
@@ -494,6 +510,359 @@
       nextPanel
     ]);
     mount(screen);
+  }
+
+  // ---- Season Hub (Wave 2) -------------------------------------------------
+  var seasonTab = 'week';
+  var lastWeekResult = null; // {week, games, playerGame} from the most recent sim
+
+  function rec(L) { return (L ? L.w + '–' + L.l : '0–0'); }
+
+  // Small scoreboard card for a single matchup (away @ home, winner bolded).
+  function miniGame(g, opts) {
+    opts = opts || {};
+    var home = T.get(g.home), away = T.get(g.away);
+    if (!home || !away) return el('div');
+    var hs = g.homeScore, as = g.awayScore;
+    var homeWon = g.played && hs > as;
+    function side(team, score, won, atHome) {
+      return el('div', { class: 'sb-side' + (g.played && won ? ' win' : '') + (g.played && !won ? ' lose' : '') }, [
+        teamBadge(team, 26),
+        el('span', { class: 'sb-name', text: (opts.rank && opts.rank[team.id] ? '#' + opts.rank[team.id] + ' ' : '') + team.name }),
+        el('span', { class: 'sb-score', text: g.played ? String(score) : '' })
+      ]);
+    }
+    return el('div', { class: 'scorecard' + (opts.player ? ' player' : '') }, [
+      opts.label ? el('div', { class: 'sb-label', text: opts.label }) : (g.bowlName ? el('div', { class: 'sb-label', text: g.bowlName }) : (g.tag ? el('div', { class: 'sb-label', text: g.tag }) : null)),
+      side(away, as, g.played && !homeWon, false),
+      side(home, hs, homeWon, true),
+      el('div', { class: 'sb-meta', text: g.neutral ? 'neutral site' : (away.name + ' at ' + home.name) })
+    ]);
+  }
+
+  function subTabs(active, onPick) {
+    var tabs = [['week', 'This Week'], ['schedule', 'Schedule'], ['rankings', 'Top 25'], ['standings', 'Standings']];
+    return el('div', { class: 'tabs season-tabs' }, tabs.map(function (t) {
+      return el('button', { class: 'tab' + (active === t[0] ? ' active' : ''),
+        onclick: function () { onPick(t[0]); } }, [t[1]]);
+    }));
+  }
+
+  function seasonHero(s) {
+    var team = T.get(s.team.id) || { name: s.team.name, colors: ['#333', '#777'], nick: '', conf: 'FBS', city: '', st: '' };
+    var Season = window.GameSeason;
+    var myRank = s.season.rankings.indexOf(s.team.id);
+    return el('div', { class: 'hq-hero', style:
+      'background:linear-gradient(135deg,' + team.colors[0] + ',' + shade(team.colors[0], -30) + ');color:' + readable(team.colors[0]) + ';' }, [
+      teamBadge(team, 64),
+      el('div', { class: 'hq-hero-text' }, [
+        el('div', { class: 'hq-eyebrow', text: s.career.year + ' Season · ' + Season.phaseLabel(s) }),
+        el('h2', { class: 'hq-team', text: team.name + ' ' + team.nick }),
+        el('div', { class: 'hq-coach' }, [
+          el('span', { text: 'Record ' + s.season.record.wins + '–' + s.season.record.losses +
+            '  (' + s.season.record.confWins + '–' + s.season.record.confLosses + ' conf)' +
+            (myRank >= 0 && myRank < 25 ? '  ·  AP #' + (myRank + 1) : '') })
+        ])
+      ])
+    ]);
+  }
+
+  function renderSeason() {
+    var s = E.state;
+    var Season = window.GameSeason;
+    Season.ensureStarted(s);
+    s.screen = 'season';
+
+    var team = T.get(s.team.id);
+    if (team) {
+      document.documentElement.style.setProperty('--team-primary', team.colors[0]);
+      document.documentElement.style.setProperty('--team-secondary', team.colors[1]);
+    }
+
+    var content = el('div', { class: 'season-content' });
+    function pick(tab) { seasonTab = tab; draw(); }
+
+    function draw() {
+      content.innerHTML = '';
+      if (seasonTab === 'week') content.appendChild(weekTab());
+      else if (seasonTab === 'schedule') content.appendChild(scheduleTab());
+      else if (seasonTab === 'rankings') content.appendChild(rankingsTab());
+      else if (seasonTab === 'standings') content.appendChild(standingsTab());
+      tabHolder.innerHTML = '';
+      tabHolder.appendChild(subTabs(seasonTab, pick));
+    }
+
+    var rankMap = function () {
+      var m = {}; s.season.rankings.forEach(function (id, i) { if (i < 25) m[id] = i + 1; }); return m;
+    };
+
+    // -- This Week / advance controls --
+    function weekTab() {
+      var wrap = el('div');
+      var phase = s.season.phase;
+
+      // Show the most recent simmed week's result, if any.
+      if (lastWeekResult && lastWeekResult.playerGame) {
+        var pg = lastWeekResult.playerGame;
+        var won = pg.winner === s.team.id;
+        wrap.appendChild(el('div', { class: 'result-banner ' + (won ? 'win' : 'loss') }, [
+          el('div', { class: 'rb-tag', text: 'Week ' + lastWeekResult.week + ' Result' }),
+          el('div', { class: 'rb-line', text: (won ? 'W  ' : 'L  ') +
+            (pg.home === s.team.id ? pg.homeScore + '–' + pg.awayScore : pg.awayScore + '–' + pg.homeScore) +
+            '  vs ' + (T.get(pg.home === s.team.id ? pg.away : pg.home) || {}).name })
+        ]));
+      }
+
+      if (phase === 'regular') {
+        var wk = s.season.week;
+        var myGame = Season.gamesInWeek(s, wk).filter(function (g) { return g.home === s.team.id || g.away === s.team.id; })[0];
+        wrap.appendChild(el('h3', { class: 'sec-title', text: 'Week ' + wk + ' of ' + s.season.totalRegWeeks }));
+        if (myGame) {
+          var opp = T.get(myGame.home === s.team.id ? myGame.away : myGame.home);
+          var atHome = myGame.home === s.team.id;
+          var oppL = s.season.league[opp.id];
+          wrap.appendChild(el('div', { class: 'matchup' }, [
+            el('div', { class: 'matchup-head', text: (myGame.rivalry ? '🔥 Rivalry · ' : (myGame.conf ? 'Conference · ' : 'Non-Conference · ')) + (atHome ? 'HOME' : 'AWAY') }),
+            el('div', { class: 'matchup-body' }, [
+              teamBadge(opp, 48),
+              el('div', {}, [
+                el('div', { class: 'card-title', text: (atHome ? 'vs ' : 'at ') + opp.name + ' ' + opp.nick }),
+                el('div', { class: 'card-sub', text: opp.conf + ' · ' + rec(oppL) + ' · rating ' + oppL.rating +
+                  (s.season.rankings.indexOf(opp.id) >= 0 && s.season.rankings.indexOf(opp.id) < 25 ? ' · AP #' + (s.season.rankings.indexOf(opp.id) + 1) : '') })
+              ])
+            ])
+          ]));
+        } else {
+          wrap.appendChild(el('p', { class: 'muted', text: 'BYE week — no game scheduled.' }));
+        }
+        wrap.appendChild(el('div', { class: 'btn-row' }, [
+          btn('▶  Sim Week ' + wk, 'primary big', function () {
+            lastWeekResult = Season.simWeek(s); E.save(); draw(); refreshHero();
+          }),
+          btn('⏩  Sim to Postseason', 'ghost', function () {
+            while (s.season.phase === 'regular') lastWeekResult = Season.simWeek(s);
+            E.save(); draw(); refreshHero();
+          })
+        ]));
+        // Top games this week (already-played previous week shown via banner; here show scoreboard of last simmed week).
+        if (lastWeekResult && lastWeekResult.games) {
+          wrap.appendChild(el('h4', { class: 'sec-sub', text: 'Week ' + lastWeekResult.week + ' scoreboard' }));
+          wrap.appendChild(scoreboardGrid(topGames(lastWeekResult.games, 8)));
+        }
+      } else if (phase === 'confchamp') {
+        wrap.appendChild(el('h3', { class: 'sec-title', text: 'Conference Championship Week' }));
+        wrap.appendChild(el('p', { class: 'muted', text: 'The regular season is in the books. Conference title games are set.' }));
+        wrap.appendChild(el('div', { class: 'btn-row' }, [
+          btn('🏟️  Play Championship Games', 'primary big', function () {
+            var games = Season.playConfChamps(s); E.save();
+            lastWeekResult = null; draw(); refreshHero();
+            var mine = games.filter(function (g) { return g.home === s.team.id || g.away === s.team.id; })[0];
+            if (mine) toast(mine.winner === s.team.id ? '🥇 You won your conference!' : 'Fell short in the title game.');
+          })
+        ]));
+      } else if (phase === 'postseason') {
+        wrap.appendChild(el('h3', { class: 'sec-title', text: 'Playoff & Bowl Season' }));
+        var champConf = Object.keys(s.season.postseason.confChamps).filter(function (c) { return s.season.postseason.confChamps[c] === s.team.id; })[0];
+        if (champConf) wrap.appendChild(el('div', { class: 'result-banner win' }, [el('div', { class: 'rb-line', text: '🥇 ' + champConf + ' Champions!' })]));
+        wrap.appendChild(el('p', { class: 'muted', text: 'The 12-team College Football Playoff bracket and the bowl slate are ready.' }));
+        wrap.appendChild(el('div', { class: 'btn-row' }, [
+          btn('🏆  Run the Playoff & Bowls', 'primary big', function () {
+            Season.playPostseason(s); E.save(); draw(); refreshHero();
+          })
+        ]));
+      } else if (phase === 'complete') {
+        wrap.appendChild(bracketView());
+      }
+      return wrap;
+    }
+
+    function topGames(games, n) {
+      // Prioritize the player's game, then ranked matchups.
+      var rk = {}; s.season.rankings.forEach(function (id, i) { rk[id] = i; });
+      return games.slice().sort(function (a, b) {
+        var ap = (a.home === s.team.id || a.away === s.team.id) ? -1 : Math.min(rk[a.home], rk[a.away]);
+        var bp = (b.home === s.team.id || b.away === s.team.id) ? -1 : Math.min(rk[b.home], rk[b.away]);
+        return ap - bp;
+      }).slice(0, n);
+    }
+
+    function scoreboardGrid(games) {
+      var rk = rankMap();
+      return el('div', { class: 'scoreboard' }, games.map(function (g) {
+        return miniGame(g, { rank: rk, player: g.home === s.team.id || g.away === s.team.id });
+      }));
+    }
+
+    // -- Postseason bracket + champion --
+    function bracketView() {
+      var ps = s.season.postseason;
+      var wrap = el('div');
+      if (ps.champion) {
+        var champ = T.get(ps.champion);
+        var iAmChamp = ps.champion === s.team.id;
+        wrap.appendChild(el('div', { class: 'champ-banner' + (iAmChamp ? ' mine' : '') }, [
+          el('div', { class: 'trophy', text: '🏆' }),
+          el('div', {}, [
+            el('div', { class: 'champ-label', text: 'National Champion' }),
+            el('div', { class: 'champ-name', text: champ ? champ.name + ' ' + champ.nick : '' }),
+            iAmChamp ? el('div', { class: 'champ-you', text: 'YOU DID IT!' }) : null
+          ])
+        ]));
+      }
+      var rk = rankMap();
+      function round(title, games) {
+        if (!games || !games.length) return null;
+        return el('div', { class: 'bracket-round' }, [
+          el('h4', { class: 'sec-sub', text: title }),
+          el('div', { class: 'scoreboard' }, games.map(function (g) { return miniGame(g, { rank: rk, player: g.home === s.team.id || g.away === s.team.id }); }))
+        ]);
+      }
+      var bk = ps.bracket;
+      if (bk && bk.final) {
+        wrap.appendChild(round('National Championship', [bk.final]));
+        wrap.appendChild(round('Semifinals', bk.semis));
+        wrap.appendChild(round('Quarterfinals', bk.quarters));
+        wrap.appendChild(round('First Round', bk.firstRound));
+      }
+      if (ps.bowls && ps.bowls.length) {
+        wrap.appendChild(el('h4', { class: 'sec-sub', text: 'Bowl Games' }));
+        wrap.appendChild(el('div', { class: 'scoreboard' }, ps.bowls.slice(0, 12).map(function (g) {
+          return miniGame(g, { rank: rk, player: g.home === s.team.id || g.away === s.team.id });
+        })));
+      }
+      wrap.appendChild(el('div', { class: 'btn-row', style: 'margin-top:16px' }, [
+        btn('📜  Finish Season & View Summary', 'primary big', function () {
+          var summary = Season.finish(s); E.save(); lastWeekResult = null; seasonTab = 'week';
+          renderSeasonSummary(summary);
+        })
+      ]));
+      return wrap;
+    }
+
+    // -- Schedule tab --
+    function scheduleTab() {
+      var games = Season.playerGames(s);
+      var rk = rankMap();
+      var rows = games.map(function (g) {
+        var opp = T.get(g.home === s.team.id ? g.away : g.home);
+        var atHome = g.home === s.team.id;
+        var res = '';
+        var cls = 'sch-row';
+        if (g.played) {
+          var won = g.winner === s.team.id;
+          cls += won ? ' won' : ' lost';
+          res = (won ? 'W ' : 'L ') + (atHome ? g.homeScore + '–' + g.awayScore : g.awayScore + '–' + g.homeScore);
+        }
+        return el('div', { class: cls }, [
+          el('span', { class: 'sch-wk', text: 'Wk ' + g.week }),
+          teamBadge(opp, 24),
+          el('span', { class: 'sch-opp', text: (atHome ? 'vs ' : '@ ') + (rk[opp.id] ? '#' + rk[opp.id] + ' ' : '') + opp.name }),
+          el('span', { class: 'sch-tag', text: g.rivalry ? '🔥' : (g.conf ? 'conf' : '') }),
+          el('span', { class: 'sch-res', text: res })
+        ]);
+      });
+      // Append postseason games the player is in.
+      Season.playerPostseasonGames(s).forEach(function (g) {
+        var opp = T.get(g.home === s.team.id ? g.away : g.home);
+        var won = g.winner === s.team.id;
+        rows.push(el('div', { class: 'sch-row ' + (won ? 'won' : 'lost') }, [
+          el('span', { class: 'sch-wk', text: '🏆' }),
+          teamBadge(opp, 24),
+          el('span', { class: 'sch-opp', text: (g.bowlName || 'Postseason') + ' vs ' + opp.name }),
+          el('span', { class: 'sch-tag', text: '' }),
+          el('span', { class: 'sch-res', text: (won ? 'W ' : 'L ') + Math.max(g.homeScore, g.awayScore) + '–' + Math.min(g.homeScore, g.awayScore) })
+        ]));
+      });
+      return el('div', { class: 'panel' }, [el('h3', { text: 'Your Schedule' })].concat(rows));
+    }
+
+    // -- Rankings tab --
+    function rankingsTab() {
+      var top = s.season.rankings.slice(0, 25);
+      var rows = top.map(function (id, i) {
+        var t = T.get(id), L = s.season.league[id];
+        return el('div', { class: 'rank-row' + (id === s.team.id ? ' mine' : '') }, [
+          el('span', { class: 'rank-no', text: (i + 1) }),
+          teamBadge(t, 24),
+          el('span', { class: 'rank-name', text: t.name }),
+          el('span', { class: 'rank-conf', text: t.conf }),
+          el('span', { class: 'rank-rec', text: rec(L) + (L.champ ? ' 🥇' : '') })
+        ]);
+      });
+      return el('div', { class: 'panel' }, [el('h3', { text: 'AP Top 25 · ' + window.GameSeason.phaseLabel(s) })].concat(rows));
+    }
+
+    // -- Standings tab (player's conference) --
+    function standingsTab() {
+      var team = T.get(s.team.id);
+      var confTeams = T.byConference(team.conf).filter(function (t) { return t.div === team.div; });
+      confTeams.sort(function (a, b) { return window.GameSeason._confSort(s.season.league, a.id, b.id); });
+      var rk = rankMap();
+      var rows = confTeams.map(function (t, i) {
+        var L = s.season.league[t.id];
+        return el('div', { class: 'stand-row' + (t.id === s.team.id ? ' mine' : '') }, [
+          el('span', { class: 'stand-no', text: (i + 1) }),
+          teamBadge(t, 22),
+          el('span', { class: 'stand-name', text: (rk[t.id] ? '#' + rk[t.id] + ' ' : '') + t.name }),
+          el('span', { class: 'stand-conf', text: L.cw + '–' + L.cl }),
+          el('span', { class: 'stand-ovr', text: L.w + '–' + L.l + (L.champ ? ' 🥇' : '') })
+        ]);
+      });
+      return el('div', { class: 'panel' }, [
+        el('h3', { text: team.conf + ' Standings' }),
+        el('div', { class: 'stand-head' }, [
+          el('span', { class: 'stand-no', text: '#' }), el('span', {}), el('span', { class: 'stand-name', text: 'Team' }),
+          el('span', { class: 'stand-conf', text: 'Conf' }), el('span', { class: 'stand-ovr', text: 'Overall' })
+        ])
+      ].concat(rows));
+    }
+
+    var heroHolder = el('div');
+    function refreshHero() { heroHolder.innerHTML = ''; heroHolder.appendChild(seasonHero(s)); }
+    var tabHolder = el('div');
+    refreshHero();
+
+    var footer = el('div', { class: 'sticky-footer' }, [
+      el('div', { class: 'sf-info' }, [el('span', { text: window.GameSeason.phaseLabel(s) })]),
+      el('div', { class: 'sf-actions' }, [
+        btn('🏛️ HQ', 'ghost', function () { s.screen = 'hq'; E.save(); renderHQ(); }),
+        btn('💾 Save', 'ghost', function () { E.save(); toast('Saved.'); })
+      ])
+    ]);
+
+    var screen = el('div', { class: 'screen season' }, [heroHolder, tabHolder, content, footer]);
+    mount(screen);
+    draw();
+  }
+
+  function renderSeasonSummary(sum) {
+    var s = E.state;
+    var champ = T.get(sum.champion);
+    var badges = [];
+    if (sum.wonNatl) badges.push(['🏆', 'National Champions']);
+    if (sum.wonConf) badges.push(['🥇', 'Conference Champions']);
+    if (sum.madePlayoff && !sum.wonNatl) badges.push(['🎟️', 'Playoff Berth']);
+    if (sum.finalRank && sum.finalRank <= 25) badges.push(['📊', 'Final AP #' + sum.finalRank]);
+
+    var card = el('div', { class: 'screen summary-screen' }, [
+      el('div', { class: 'summary-card' }, [
+        el('div', { class: 'sum-year', text: sum.year + ' Season' }),
+        el('div', { class: 'sum-team', text: sum.teamName }),
+        el('div', { class: 'sum-record', text: sum.wins + '–' + sum.losses }),
+        el('div', { class: 'sum-badges' }, badges.length ? badges.map(function (b) {
+          return el('div', { class: 'sum-badge' }, [el('span', { class: 'sb-emoji', text: b[0] }), el('span', { text: b[1] })]);
+        }) : [el('p', { class: 'muted', text: sum.wins >= 6 ? 'Bowl-eligible season.' : 'A building year.' })]),
+        el('div', { class: 'sum-rep', text: 'Reputation ' + (sum.repDelta >= 0 ? '+' : '') + sum.repDelta + ' → ' + sum.reputation }),
+        champ ? el('div', { class: 'sum-natl', text: 'National Champion: ' + champ.name + ' ' + champ.nick }) : null,
+        el('div', { class: 'btn-row', style: 'justify-content:center;margin-top:18px' }, [
+          btn('🏈  Start ' + s.career.year + ' Season', 'primary big', function () {
+            window.GameSeason.ensureStarted(s); s.screen = 'season'; E.save(); renderSeason();
+          }),
+          btn('🏛️  Program HQ', 'ghost', function () { s.screen = 'hq'; E.save(); renderHQ(); })
+        ])
+      ])
+    ]);
+    mount(card);
   }
 
   function toast(msg) {
@@ -510,11 +879,13 @@
       if (!s) { renderTitle(); return; }
       switch (s.screen) {
         case 'hq': renderHQ(); break;
+        case 'season': renderSeason(); break;
         default: renderTitle();
       }
     },
     renderTitle: renderTitle,
     renderHQ: renderHQ,
+    renderSeason: renderSeason,
     teamBadge: teamBadge,
     toast: toast,
     // exposed for tests

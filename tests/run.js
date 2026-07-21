@@ -236,6 +236,139 @@ function serve() {
   fs.mkdirSync(path.join(ROOT, 'tests/artifacts'), { recursive: true });
   await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/hq.png'), fullPage: true });
 
+  // ---------- (a) SEASON ENGINE ----------
+  group('Season engine: schedule + sim + postseason + rollover');
+  const se = await page.evaluate(() => {
+    const E = window.GameEngine, S = window.GameSeason, T = window.TeamData;
+    E.newCareer({ id: 'c', name: 'Sim Coach', source: 'custom',
+      ratings: { recruiting: 70, offense: 80, defense: 75, development: 70, discipline: 70, motivation: 70, media: 60 } },
+      T.get('oregon'));
+    S.start(E.state);
+    const s = E.state.season;
+    const teams = S.leagueTeams(E.state);
+
+    // schedule invariants
+    const busy = {}; teams.forEach(t => busy[t.id] = {});
+    let weekConflicts = 0, maxGames = 0;
+    const per = {}; teams.forEach(t => per[t.id] = 0);
+    s.schedule.forEach(g => {
+      per[g.home]++; per[g.away]++;
+      if (busy[g.home][g.week] || busy[g.away][g.week]) weekConflicts++;
+      busy[g.home][g.week] = 1; busy[g.away][g.week] = 1;
+    });
+    teams.forEach(t => { maxGames = Math.max(maxGames, per[t.id]); });
+    const playerGames = S.playerGames(E.state).length;
+
+    // sim regular season
+    let guard = 0; while (s.phase === 'regular' && guard++ < 40) S.simWeek(E.state);
+    const unplayed = s.schedule.filter(g => !g.played).length;
+    let W = 0, L = 0; Object.keys(s.league).forEach(id => { W += s.league[id].w; L += s.league[id].l; });
+
+    const conf = S.playConfChamps(E.state);
+    const post = S.playPostseason(E.state);
+    const champion = s.postseason.champion;
+    const seeds = s.postseason.cfpSeeds.length;
+
+    const careerBefore = { w: E.state.career.wins, seasons: E.state.career.seasonsCoached, year: E.state.career.year };
+    const sum = S.finish(E.state);
+    const careerAfter = { w: E.state.career.wins, seasons: E.state.career.seasonsCoached, year: E.state.career.year,
+      hist: E.state.history.length, phase: E.state.season.phase, started: E.state.season.started };
+
+    return { teams: teams.length, weekConflicts, maxGames, playerGames, unplayed, W, L,
+      confGames: conf.length, seeds, champion, bowls: s.postseason.bowls.length,
+      playerRec: sum, careerBefore, careerAfter };
+  });
+  eq(se.teams, 136, 'season simulates all 136 FBS teams');
+  eq(se.weekConflicts, 0, 'no team plays twice in one week');
+  eq(se.maxGames, 12, 'teams play at most a 12-game slate');
+  eq(se.playerGames, 12, 'player has a full 12-game schedule');
+  eq(se.unplayed, 0, 'every regular-season game gets played');
+  eq(se.W, se.L, 'league wins equal losses (records consistent)');
+  ok(se.confGames >= 6, 'conference title games are played (got ' + se.confGames + ')');
+  eq(se.seeds, 12, '12-team playoff bracket seeded');
+  ok(!!se.champion, 'a national champion is crowned (' + se.champion + ')');
+  ok(se.bowls >= 10, 'bowl slate is populated (got ' + se.bowls + ')');
+  eq(se.careerAfter.seasons, se.careerBefore.seasons + 1, 'finish() increments seasons coached');
+  eq(se.careerAfter.year, se.careerBefore.year + 1, 'finish() advances the year');
+  eq(se.careerAfter.w, se.careerBefore.w + se.playerRec.wins, 'season wins roll into career total');
+  eq(se.careerAfter.hist, 1, 'season summary archived to history');
+  eq(se.careerAfter.started, false, 'season resets to preseason after finish');
+
+  group('Save backfill: wave-1 save gains the season schema');
+  const bf = await page.evaluate(() => {
+    const E = window.GameEngine;
+    // A save shaped like Wave 1 (no season.phase/league/rankings keys).
+    const old = { saveVersion: 1, coach: { name: 'Legacy' }, team: { id: 'georgia', division: 'fbs' },
+      career: { wins: 3, losses: 1, year: 2025 }, season: { started: false, week: 0, schedule: [], results: [], record: { wins: 0, losses: 0, confWins: 0, confLosses: 0 } } };
+    E.deserialize(JSON.stringify(old));
+    const s = E.state.season;
+    return { phase: s.phase, hasLeague: !!s.league && typeof s.league === 'object',
+      hasRankings: Array.isArray(s.rankings), hasPost: !!s.postseason && Array.isArray(s.postseason.cfpSeeds),
+      keptWins: E.state.career.wins };
+  });
+  eq(bf.phase, 'preseason', 'backfill adds season.phase default');
+  ok(bf.hasLeague, 'backfill adds season.league');
+  ok(bf.hasRankings, 'backfill adds season.rankings');
+  ok(bf.hasPost, 'backfill adds season.postseason.cfpSeeds');
+  eq(bf.keptWins, 3, 'backfill preserves saved career wins');
+
+  // ---------- (b) SEASON UI CLICK-THROUGH ----------
+  group('UI: start season -> sim -> playoff -> summary -> next season');
+  await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => window.GameUI);
+  await page.waitForSelector('.title-screen');
+  await page.click('button:has-text("New Career")');
+  await page.waitForSelector('.team-card');
+  await page.fill('.input[type="search"]', 'Georgia Bulldogs');
+  await page.waitForTimeout(80);
+  // The search narrows to exactly the Georgia Bulldogs card.
+  await page.click('.team-card');
+  const pickedGeorgia = await page.evaluate(() => window.GameUI._pick().team && window.GameUI._pick().team.id);
+  eq(pickedGeorgia, 'georgia', 'search + click selects Georgia');
+  await page.click('button:has-text("Next: Choose Coach")');
+  await page.waitForSelector('.coach-card');
+  await page.click('.coach-card:has-text("Kirby Smart")');
+  await page.click('button:has-text("Start Career")');
+  await page.waitForSelector('.hq');
+
+  // Enter the season
+  await page.click('button:has-text("Start the")');
+  await page.waitForSelector('.season .season-tabs');
+  ok(await page.isVisible('button:has-text("Sim Week 1")'), 'season hub shows Sim Week 1');
+
+  // Sim one week, then fast-forward to postseason
+  await page.click('button:has-text("Sim Week 1")');
+  await page.waitForSelector('.result-banner, .scoreboard');
+  await page.click('button:has-text("Sim to Postseason")');
+  await page.waitForSelector('button:has-text("Play Championship Games")');
+  await page.click('button:has-text("Play Championship Games")');
+  await page.waitForSelector('button:has-text("Run the Playoff")');
+  await page.click('button:has-text("Run the Playoff")');
+  await page.waitForSelector('.champ-banner');
+  ok(await page.isVisible('.champ-banner'), 'national champion banner shows after playoff');
+
+  // Check the schedule + rankings tabs render
+  await page.click('.season-tabs .tab:has-text("Top 25")');
+  await page.waitForSelector('.rank-row');
+  const rankCount = await page.evaluate(() => document.querySelectorAll('.rank-row').length);
+  eq(rankCount, 25, 'Top 25 renders exactly 25 teams');
+  await page.click('.season-tabs .tab:has-text("Schedule")');
+  await page.waitForSelector('.sch-row');
+
+  // Finish the season -> summary -> next season
+  await page.click('.season-tabs .tab:has-text("This Week")');
+  await page.click('button:has-text("Finish Season")');
+  await page.waitForSelector('.summary-card');
+  const summaryYear = await page.evaluate(() => document.querySelector('.sum-year').textContent);
+  ok(/2025/.test(summaryYear), 'summary shows the completed 2025 season');
+  await page.click('.summary-card button:has-text("Start 2026 Season")');
+  await page.waitForSelector('.season .season-tabs');
+  const nextYear = await page.evaluate(() => window.GameEngine.state.season.year);
+  eq(nextYear, 2026, 'next season starts in 2026');
+
+  await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/season.png'), fullPage: true });
+
   group('No runtime errors');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));
 
