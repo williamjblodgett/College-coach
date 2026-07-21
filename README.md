@@ -60,7 +60,7 @@ npm test           # node tests/run.js
 2. ✅ **Season engine** — schedule, weekly sim, AP Top 25, conference titles, 12-team playoff + bowls, career rollover
 3. ✅ **Game day broadcast** — drive-by-drive sim, TV score bug + field + ticker, momentum, live 4th-down/2pt/onside/tempo decisions
 4. ✅ **Recruiting + portal + NIL** — roster/depth chart that drives ratings, weekly recruiting board, signing-day cutscene, NIL/facilities budget, transfer portal, offseason development
-5. Staff hires (coordinators/position coaches) that affect gameplay
+5. ✅ **Staff** — a 9-role coordinator/position-coach cabinet whose ratings boost offense/defense/special teams/recruiting/development, with a hiring market, staff budget, and loyalty (poaching + wave-6 leak risk)
 6. Scandal / NCAA-violations risk-vs-reward lifecycle
 7. Job carousel / dynasty arc — offers, contracts, reputation that travels
 8. Championship & bowl cutscenes

@@ -573,6 +573,102 @@ function serve() {
 
   await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/recruiting.png'), fullPage: true });
 
+  // ---------- (a) STAFF ENGINE ----------
+  group('Staff: cabinet, effects, hiring, balance');
+  const stf = await page.evaluate(() => {
+    const E = window.GameEngine, S = window.GameSeason, P = window.GameProgram, St = window.GameStaff, Sim = window.GameSim, T = window.TeamData;
+    const out = {};
+    E.newCareer({ id: 'c', name: 'Coach', source: 'custom',
+      ratings: { recruiting: 75, offense: 75, defense: 75, development: 75, discipline: 72, motivation: 75, media: 65 } }, T.get('oregon'));
+    out.cabinet = Object.keys(E.state.staff).length;
+    out.market = E.state.staffMarket.length;
+    out.budget0 = E.state.program.staffBudget;
+    const eff = St.effects(E.state);
+    out.effHasFields = ['off', 'def', 'special', 'recruiting', 'development', 'loyalty', 'cohesion'].every(k => k in eff);
+
+    // Hiring a better OC raises the offense effect.
+    const oc = E.state.staff.OC;
+    const better = E.state.staffMarket.filter(c => c.role === 'OC' && c.overall > oc.overall && c.salary <= E.state.program.staffBudget)[0]
+      || E.state.staffMarket.filter(c => c.overall >= 80 && c.salary <= E.state.program.staffBudget)[0];
+    let effOffBefore = St.effects(E.state).off, effOffAfter = effOffBefore, hired = false;
+    if (better) {
+      // pump budget to be safe
+      E.state.program.staffBudget = 99;
+      const c2 = E.state.staffMarket.filter(x => x.role === 'OC').sort((a, b) => b.overall - a.overall)[0];
+      if (c2 && c2.overall > oc.overall) { St.hire(E.state, c2.id); hired = true; effOffAfter = St.effects(E.state).off; }
+    }
+    out.hireRaisesOffense = !hired || effOffAfter >= effOffBefore;
+    out.budgetDeducted = E.state.program.staffBudget < 99 || !hired;
+
+    // Balance: player win totals scale by tier and aren't blowouts everywhere.
+    function tierWins(teamId) {
+      E.newCareer({ id: 'c', name: 'Coach', source: 'custom', ratings: { recruiting: 72, offense: 72, defense: 72, development: 72, discipline: 70, motivation: 72, media: 65 } }, T.get(teamId));
+      E.state.seed = 12345; S.start(E.state);
+      const units = P.playerUnitRatings(E.state);
+      const pgs = S.playerGames(E.state); let W = 0;
+      pgs.forEach(g => {
+        const ps = g.home === teamId ? 'home' : 'away';
+        const oppId = g.home === teamId ? g.away : g.home;
+        const or = Sim.ratingsFor(E.state.season.league[oppId], null, false);
+        const gg = Sim.create({ seed: (g.week * 131 + 7) >>> 0, playerSide: ps,
+          home: ps === 'home' ? { id: g.home, off: units.off, def: units.def, special: units.special, isPlayer: true } : { id: g.home, off: or.off, def: or.def, isPlayer: false },
+          away: ps === 'away' ? { id: g.away, off: units.off, def: units.def, special: units.special, isPlayer: true } : { id: g.away, off: or.off, def: or.def, isPlayer: false } });
+        const res = Sim.simRemaining(gg);
+        const my = ps === 'home' ? res.homeScore : res.awayScore, op = ps === 'home' ? res.awayScore : res.homeScore;
+        if (my > op) W++;
+      });
+      return { wins: W, rating: E.state.season.league[teamId].rating };
+    }
+    out.blueblood = tierWins('georgia');
+    out.smallProg = tierWins('buffalo');
+    return out;
+  });
+  eq(stf.cabinet, 9, 'staff cabinet has 9 roles');
+  ok(stf.market >= 8, 'a coaching market is generated');
+  ok(stf.budget0 > 0, 'staff budget is granted at career start');
+  ok(stf.effHasFields, 'staff effects expose all fields');
+  ok(stf.hireRaisesOffense, 'hiring a stronger OC does not lower the offense effect');
+  ok(stf.blueblood.rating > stf.smallProg.rating, 'blue-blood outrates a small program (' + stf.blueblood.rating + ' vs ' + stf.smallProg.rating + ')');
+  ok(stf.blueblood.wins >= stf.smallProg.wins, 'blue-blood wins at least as many games');
+  ok(stf.smallProg.wins <= 11, 'a small program is not an unbeatable juggernaut (' + stf.smallProg.wins + ' wins)');
+
+  group('Save backfill: pre-wave-5 save gains staff');
+  const bf3 = await page.evaluate(() => {
+    const E = window.GameEngine;
+    const old = { saveVersion: 1, coach: { name: 'Legacy', ratings: { recruiting: 60, offense: 60, defense: 60, development: 60, discipline: 60, motivation: 60, media: 60 } },
+      team: { id: 'lsu', division: 'fbs' }, career: { wins: 4, losses: 2, year: 2025 } };
+    E.deserialize(JSON.stringify(old));
+    const hadStaffKey = !!E.state.staff && typeof E.state.staff === 'object';
+    window.GameProgram.ensureProgram(E.state);
+    return { hadStaffKey, cabinet: Object.keys(E.state.staff).length, budget: E.state.program.staffBudget };
+  });
+  ok(bf3.hadStaffKey, 'backfill adds the staff container');
+  eq(bf3.cabinet, 9, 'ensureProgram fills the staff cabinet for an old save');
+
+  group('UI: staff screen + hiring');
+  await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => window.GameUI && window.GameStaff);
+  await page.evaluate(() => {
+    const E = window.GameEngine, T = window.TeamData;
+    E.newCareer({ id: 'c', name: 'Coach Vance', source: 'custom',
+      ratings: { recruiting: 80, offense: 80, defense: 78, development: 80, discipline: 74, motivation: 78, media: 66 } }, T.get('oregon'));
+    E.state.program.staffBudget = 99; // ensure an affordable hire for the test
+    E.state.screen = 'hq'; window.GameUI.renderHQ();
+  });
+  await page.waitForSelector('.hq');
+  await page.click('.hq button:has-text("Staff")');
+  await page.waitForSelector('.staff-screen .staff-row');
+  const staffRows = await page.evaluate(() => document.querySelectorAll('.staff-row').length);
+  eq(staffRows, 9, 'staff screen lists the full cabinet');
+  const hireBtn = await page.$('.mk-btn:not([disabled])');
+  ok(!!hireBtn, 'coaching market offers an affordable hire');
+  const budgetBefore = await page.evaluate(() => window.GameEngine.state.program.staffBudget);
+  await hireBtn.click();
+  const budgetAfter = await page.evaluate(() => window.GameEngine.state.program.staffBudget);
+  ok(budgetAfter < budgetBefore, 'hiring a coach spends staff budget');
+  await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/staff.png'), fullPage: true });
+
   group('No runtime errors');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));
 

@@ -125,23 +125,46 @@
       return { off: Math.round(off), def: Math.round(def), overall: Math.round((off + def) / 2) };
     },
 
-    // The player's season power rating: roster-driven, nudged by prestige/coach.
+    // The player's season power rating. Centered on the SAME prestige baseline
+    // the AI uses (season.js ratingFor), with roster quality, coaching, and
+    // staff as modifiers — so a program plays near its peers until you build it
+    // up. This keeps the player from being inherently overpowered.
     playerTeamRating: function (state) {
-      var rr = GameProgram.rosterRatings(state);
       var team = T.get(state.team.id) || { prestige: 5 };
+      var baseline = 44 + team.prestige * 4.6;                 // matches AI center
+      var rr = GameProgram.rosterRatings(state);
+      var expectedRoster = 60 + team.prestige * 1.6;           // fresh roster for this tier
+      var rosterMod = (rr.overall - expectedRoster) * 0.6;     // recruiting/development payoff
       var c = state.coach.ratings || {};
-      var coachBump = ((c.offense + c.defense + c.motivation) / 3 - 62) * 0.12;
-      var r = 0.72 * rr.overall + 0.20 * (45 + team.prestige * 4.6) + 8 + coachBump;
-      return clamp(Math.round(r), 35, 99);
+      var coachBump = ((c.offense + c.defense + c.motivation + c.development) / 4 - 65) * 0.10;
+      var sf = GameProgram.staffEffects(state);
+      var staffBump = (sf.off + sf.def) * 0.25;
+      return clamp(Math.round(baseline + rosterMod + coachBump + staffBump), 35, 99);
     },
 
-    // Game-day unit ratings for the player (blend roster + coach).
+    // Aggregate coaching-staff effects (safe when no staff module/loaded).
+    staffEffects: function (state) {
+      if (window.GameStaff) return window.GameStaff.effects(state);
+      return { off: 0, def: 0, special: 58, recruiting: 0, development: 0, loyalty: 70, cohesion: 70 };
+    },
+
+    // Game-day unit ratings for the player. Centered on the team's power rating
+    // (same scale as AI opponents) with a coach/staff tilt so offense and
+    // defense diverge — keeps broadcast games competitive rather than blowouts.
     playerUnitRatings: function (state) {
+      var teamR = GameProgram.playerTeamRating(state);
       var rr = GameProgram.rosterRatings(state);
       var c = state.coach.ratings || {};
+      var sf = GameProgram.staffEffects(state);
+      // Absolute staff strength is already in teamR; the unit tilt only reflects
+      // the offense-vs-defense spread so units diverge without double-counting.
+      var sfSpread = (sf.off - sf.def) / 2;
+      var offTilt = (rr.off - rr.overall) * 0.5 + (c.offense - 70) * 0.12 + sfSpread * 0.6;
+      var defTilt = (rr.def - rr.overall) * 0.5 + (c.defense - 70) * 0.12 - sfSpread * 0.6;
       return {
-        off: clamp(Math.round(rr.off * 0.68 + (45 + 0) + (c.offense - 62) * 0.32 + (c.development - 62) * 0.08), 35, 99),
-        def: clamp(Math.round(rr.def * 0.68 + 45 + (c.defense - 62) * 0.32 + (c.discipline - 62) * 0.08), 35, 99)
+        off: clamp(Math.round(teamR + offTilt), 35, 99),
+        def: clamp(Math.round(teamR + defTilt), 35, 99),
+        special: clamp(Math.round(sf.special), 35, 99)
       };
     },
 
@@ -175,7 +198,8 @@
 
     weeklyRecruitPoints: function (state) {
       var c = state.coach.ratings || {};
-      return Math.round(8 + c.recruiting * 0.09 + state.program.nilLevel * 0.05);
+      var sf = GameProgram.staffEffects(state);
+      return Math.round(8 + c.recruiting * 0.09 + state.program.nilLevel * 0.05 + sf.recruiting * 0.4);
     },
 
     // Called each time a week is advanced: grant points + AI competition.
@@ -206,7 +230,8 @@
       var team = T.get(state.team.id) || { prestige: 5 };
       // Prestige + NIL raise your base pull; higher-star prospects resist harder
       // for everyone, so blue chips demand real, focused investment.
-      var base = 1.35 + team.prestige * 0.06 + state.program.nilLevel * 0.012;
+      var sf = GameProgram.staffEffects(state);
+      var base = 1.35 + team.prestige * 0.06 + state.program.nilLevel * 0.012 + sf.recruiting * 0.02;
       var starResist = 1 + Math.max(0, p.stars - 3) * 0.95;
       var pull = base / starResist;
       p.heat = (p.heat || 0) + pts;
@@ -266,6 +291,8 @@
       state.program.departures = departures.map(function (p) { return { name: p.name, pos: p.pos, stars: p.stars, ovr: p.ovr }; });
       // Incoming transfer portal pool.
       state.program.portal = GameProgram.generatePortal(rng, team.prestige, state.career.year);
+      // Staff: loyalty drift, poaching, budget + market refresh for the new year.
+      if (window.GameStaff) window.GameStaff.offseasonUpdate(state, lastWins);
       return { points: state.program.offseasonPoints, departures: state.program.departures, portal: state.program.portal };
     },
 
@@ -314,6 +341,7 @@
       var rng = E.makeRng((state.seed ^ (state.career.year * 2246822519)) >>> 0);
       var c = state.coach.ratings || {};
       var fac = state.program.facilitiesLevel;
+      var sf = GameProgram.staffEffects(state);
       var kept = [];
       state.roster.forEach(function (p) {
         if (p.leaving) return;            // transferred out
@@ -321,7 +349,7 @@
         // Develop.
         var headroom = Math.max(0, p.pot - p.ovr);
         var traitBoost = { normal: 1, impact: 1.6, star: 2.2, elite: 3 }[p.dev] || 1;
-        var gain = (1 + rng() * 2) * traitBoost + fac * 0.02 + (c.development - 62) * 0.02;
+        var gain = (1 + rng() * 2) * traitBoost + fac * 0.02 + (c.development - 62) * 0.02 + sf.development;
         p.ovr = clamp(Math.round(p.ovr + Math.min(headroom, gain)), 40, 99);
         // Advance class.
         p.year = YEARS[Math.min(3, YEARS.indexOf(p.year) + 1)];
@@ -358,6 +386,7 @@
       state.recruiting = E.freshState().recruiting;
       state.recruiting.classYear = state.career.year + 1;
       state.recruiting.board = GameProgram.generateBoard(rng, team.prestige, state.recruiting.classYear);
+      if (window.GameStaff) window.GameStaff.initStaff(state);
       return state;
     },
 
@@ -374,6 +403,7 @@
     // signed class + portal, develop/graduate the roster, advance the year, and
     // kick off a fresh season with a new recruiting class.
     startNextSeason: function (state) {
+      // Staff offseason update already ran in beginOffseason.
       GameProgram.developAndRollover(state);   // add signed class, graduate SR, develop
       state.career.year++;
       state.program.signedClass = [];
@@ -392,6 +422,7 @@
         var rng = E.makeRng(((state.seed || 1) ^ 0x1b56c4f) >>> 0);
         state.recruiting.board = GameProgram.generateBoard(rng, team.prestige, state.career.year + 1);
       }
+      if (window.GameStaff) window.GameStaff.ensureStaff(state); // wave 5 backfill
       return state;
     }
   };

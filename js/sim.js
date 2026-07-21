@@ -45,6 +45,7 @@
       colors: team.colors, emoji: team.emoji,
       off: clamp(Math.round(cfg.off), 30, 99),
       def: clamp(Math.round(cfg.def), 30, 99),
+      special: clamp(Math.round(cfg.special != null ? cfg.special : 58), 30, 99),
       isPlayer: !!cfg.isPlayer,
       timeouts: 3, score: 0, tempo: 'normal',
       stats: { plays: 0, yards: 0, pass: 0, rush: 0, first: 0, to: 0, sacks: 0 }
@@ -216,7 +217,7 @@
       g.awaitingKickoff = false; g.kickTo = null;
       var rng = g._rng;
       if (onside) {
-        var recover = rng() < 0.18;
+        var recover = rng() < clamp(0.18 + (g[kicking].special - 58) * 0.003, 0.08, 0.34);
         if (recover) {
           g.poss = kicking; g.los = clamp(48 + Math.round(gauss(rng, 0, 3)), 40, 55);
           GameSim._newSeries(g);
@@ -466,7 +467,7 @@
     _fieldGoal: function (g) {
       var rng = g._rng, o = g[g.poss];
       var dist = (100 - g.los) + 17;
-      var p = clamp(1.30 - dist * 0.013, 0.05, 0.99);
+      var p = clamp(1.30 - dist * 0.013 + (o.special - 58) * 0.0035, 0.05, 0.995);
       GameSim._runClock(g, 8);
       var good = rng() < p;
       if (good) {

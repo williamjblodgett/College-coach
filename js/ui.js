@@ -497,6 +497,7 @@
           renderSeason();
         }),
         btn('📋 Roster', 'ghost', function () { renderRoster('hq'); }),
+        btn('🧑‍🏫 Staff', 'ghost', function () { renderStaff('hq'); }),
         btn('💾 Save', 'ghost', function () { E.save(); toast('Career saved.'); }),
         btn('⬇ Export', 'ghost', function () {
           var t = E.serialize();
@@ -1022,7 +1023,8 @@
           btn('🏈  Start ' + nextYear + ' Season  →', 'primary big', function () {
             P.startNextSeason(s); s.screen = 'season'; seasonTab = 'week'; lastWeekResult = null; E.save(); renderSeason();
           }),
-          btn('📋 View Roster', 'ghost', function () { renderRoster('offseason'); })
+          btn('📋 Roster', 'ghost', function () { renderRoster('offseason'); }),
+          btn('🧑‍🏫 Staff', 'ghost', function () { renderStaff('offseason'); })
         ])
       ]);
       mount(content);
@@ -1114,6 +1116,92 @@
     return el('div', { class: 'stat' }, [el('div', { class: 'stat-val', text: val }), el('div', { class: 'stat-label', text: label })]);
   }
 
+  // ---- Staff / coaching cabinet (Wave 5) -----------------------------------
+  function renderStaff(from) {
+    var s = E.state, St = window.GameStaff;
+    St.ensureStaff(s);
+    var back = from === 'offseason' ? function () { renderOffseason(); }
+      : from === 'season' ? function () { renderSeason(); }
+      : function () { s.screen = 'hq'; E.save(); renderHQ(); };
+
+    function loyClass(l) { return l >= 75 ? 'good' : l >= 55 ? 'ok' : 'bad'; }
+
+    function draw() {
+      var eff = St.effects(s);
+      function fx(n, plus) { return (plus && n >= 0 ? '+' : '') + (Math.round(n * 10) / 10); }
+
+      var effChips = el('div', { class: 'staff-effects' }, [
+        effChip('Offense', fx(eff.off, true)),
+        effChip('Defense', fx(eff.def, true)),
+        effChip('Sp. Teams', eff.special),
+        effChip('Recruiting', fx(eff.recruiting, true)),
+        effChip('Development', fx(eff.development, true)),
+        effChip('Cohesion', eff.cohesion)
+      ]);
+
+      // Cabinet
+      var cabinet = el('div', { class: 'panel' }, [el('h3', { text: '🧑‍🏫 Your Staff' })].concat(
+        St.ROLES.map(function (r) {
+          var m = s.staff[r.id];
+          var key = r.primary === 'rec' ? ('REC ' + (m ? m.recruiting : '—'))
+            : r.primary === 'dev' ? ('DEV ' + (m ? m.development : '—')) : ('OVR ' + (m ? m.overall : '—'));
+          return el('div', { class: 'staff-row' }, [
+            el('div', { class: 'staff-role' }, [
+              el('div', { class: 'sr-label', text: r.label }),
+              el('div', { class: 'sr-aff muted', text: r.aff })
+            ]),
+            el('div', { class: 'staff-mem' }, [
+              el('div', { class: 'sm-name', text: m ? m.name : '(vacant)' }),
+              el('div', { class: 'sm-meta' }, [
+                el('span', { class: 'sm-ovr', text: m ? m.overall : '—' }),
+                el('span', { class: 'sm-loy ' + (m ? loyClass(m.loyalty) : ''), text: m ? ('♥ ' + m.loyalty) : '' })
+              ])
+            ])
+          ]);
+        })
+      ));
+
+      // Market
+      var market = (s.staffMarket || []).slice(0, 14);
+      var marketPanel = el('div', { class: 'panel' }, [
+        el('h3', { text: '📋 Coaching Market' }),
+        el('p', { class: 'muted', text: 'Budget: ' + s.program.staffBudget + ' pts. Hiring replaces the coach in that role.' }),
+        el('div', { class: 'market-list' }, market.map(function (c) {
+          var incumbent = s.staff[c.role];
+          var better = incumbent && c.overall > incumbent.overall;
+          return el('div', { class: 'market-row' }, [
+            el('span', { class: 'mk-role', text: c.role }),
+            el('span', { class: 'mk-name', text: c.name }),
+            el('span', { class: 'mk-ovr' + (better ? ' up' : ''), text: c.overall + (better ? ' ↑' : '') }),
+            el('span', { class: 'mk-loy muted', text: '♥' + c.loyalty }),
+            el('button', { class: 'btn mk-btn', disabled: s.program.staffBudget < c.salary ? 'disabled' : null,
+              onclick: function () {
+                var res = St.hire(s, c.id);
+                if (res.ok) { toast('Hired ' + c.name + ' (' + St.ROLE_MAP[c.role].label + ')'); E.save(); draw(); }
+              } }, ['Hire · ' + c.salary])
+          ]);
+        }))
+      ]);
+
+      var screen = el('div', { class: 'screen staff-screen' }, [
+        el('div', { class: 'screen-head' }, [
+          el('h2', { text: T.get(s.team.id).name + ' Staff' }),
+          el('p', { class: 'muted', text: 'Coordinators and position coaches shape your team. Loyalty guards against leaks and poaching.' })
+        ]),
+        effChips, cabinet, marketPanel,
+        el('div', { class: 'sticky-footer' }, [
+          el('div', { class: 'sf-info' }, [el('span', { text: 'Cohesion ' + St.effects(s).cohesion + ' · Budget ' + s.program.staffBudget })]),
+          el('div', { class: 'sf-actions' }, [btn('← Back', 'ghost', back)])
+        ])
+      ]);
+      mount(screen);
+    }
+    function effChip(label, val) {
+      return el('div', { class: 'sfx' }, [el('div', { class: 'sfx-val', text: val }), el('div', { class: 'sfx-lbl', text: label })]);
+    }
+    draw();
+  }
+
   // ---- Game Day broadcast (Wave 3) -----------------------------------------
   var SPEEDS = { slow: 1100, normal: 620, fast: 300 };
 
@@ -1132,10 +1220,10 @@
     var pr = window.GameProgram ? window.GameProgram.playerUnitRatings(s) : Sim.ratingsFor(league[playerId], coach, true);
     var or = Sim.ratingsFor(league[oppId], null, false);
     var homeCfg = playerSide === 'home'
-      ? { id: pg.home, off: pr.off, def: pr.def, isPlayer: true }
+      ? { id: pg.home, off: pr.off, def: pr.def, special: pr.special, isPlayer: true }
       : { id: pg.home, off: or.off, def: or.def, isPlayer: false };
     var awayCfg = playerSide === 'away'
-      ? { id: pg.away, off: pr.off, def: pr.def, isPlayer: true }
+      ? { id: pg.away, off: pr.off, def: pr.def, special: pr.special, isPlayer: true }
       : { id: pg.away, off: or.off, def: or.def, isPlayer: false };
 
     var oppRankIdx = s.season.rankings.indexOf(oppId);
@@ -1423,6 +1511,7 @@
     renderHQ: renderHQ,
     renderSeason: renderSeason,
     renderRoster: renderRoster,
+    renderStaff: renderStaff,
     renderSigningDay: renderSigningDay,
     renderOffseason: renderOffseason,
     teamBadge: teamBadge,

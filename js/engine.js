@@ -130,8 +130,12 @@
         facilitiesLevel: 30,      // 0-100, boosts player development
         portal: [],               // incoming transfer pool (offseason)
         departures: [],           // players who left this offseason
-        signedClass: []           // most recent signed class (for the cutscene)
+        signedClass: [],          // most recent signed class (for the cutscene)
+        staffBudget: 0            // points for hiring assistants (wave 5)
       },
+      // Coaching staff cabinet + hiring market (wave 5).
+      staff: {},                  // role id -> staff member object
+      staffMarket: [],            // available candidates to hire
       history: [],                // season summaries
       settings: {
         sound: true,
