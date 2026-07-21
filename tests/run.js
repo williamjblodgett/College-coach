@@ -1024,6 +1024,42 @@ function serve() {
   const cutDone = await page.evaluate(() => window.GameEngine.state.__cutsceneDone === true);
   ok(cutDone, 'the cutscene Continue button proceeds');
 
+  group('2.0: divisions, tactics, player spine, and living world');
+  const v2 = await page.evaluate(() => {
+    const E=window.GameEngine,T=window.TeamData,S=window.GameSeason,P=window.GameProgram,C=window.GameCareer;
+    const out={counts:{}};
+    ['fbs','fcs','d2','d3'].forEach(d => out.counts[d]=T.byDivision(d).length);
+    E.newCareer({id:'long',name:'Avery Stone',source:'custom',ratings:{recruiting:72,offense:74,defense:71,development:76,discipline:70,motivation:75,media:68}},T.byDivision('d3')[0]);
+    E.state.settings.scandalIntensity='off';
+    E.state.career.reputation=90;E.state.career.coachingAbility=90;E.state.career.nameRecognition=90;E.state.career.fame=75;
+    out.promotion=C.generateOffers(E.state,{wins:12,losses:1,wonConf:true,wonNatl:true}).some(o=>T.get(o.teamId).div==='d2');
+    E.state.jobOffers=[];
+    S.start(E.state);
+    const game=S.playerWeekGame(E.state), wx=game.weather;
+    window.GameTactics.setPlan(E.state,'airRaid');
+    const before={off:70,def:70,special:60,isPlayer:true};
+    const planned=window.GameTactics.apply(E.state,before);
+    out.weather=!!wx&&typeof wx.temp==='number'; out.plan=E.state.season.gamePlan; out.planApplied=planned.config.off!==70||planned.config.def!==70;
+    while(E.state.season.phase==='regular')S.simWeek(E.state);
+    S.playConfChamps(E.state);S.playPostseason(E.state);let sum=S.finish(E.state);
+    out.stats=E.state.roster.some(p=>p.stats&&p.stats.seasons&&p.stats.seasons[String(E.state.career.year)]&&p.stats.seasons[String(E.state.career.year)].games>0);
+    out.awards=Array.isArray(sum.playerAwards);out.worldNews=Array.isArray(E.state.world.news)&&E.state.world.news.length>0;
+    P.signingDay(E.state);P.beginOffseason(E.state);C.stay(E.state,sum.wins);
+    for(let y=0;y<7;y++){S.start(E.state);while(E.state.season.phase==='regular')S.simWeek(E.state);S.playConfChamps(E.state);S.playPostseason(E.state);sum=S.finish(E.state);P.signingDay(E.state);P.beginOffseason(E.state);C.stay(E.state,sum.wins);}
+    out.longYear=E.state.career.year;out.history=E.state.history.length;out.realign=E.state.world.realignment.length;
+    out.crest=window.GameCrests.render(T.byDivision('d3')[0],36).tagName.toLowerCase()==='svg';
+    return out;
+  });
+  ok(v2.counts.fcs >= 32 && v2.counts.d2 >= 32 && v2.counts.d3 >= 32, 'all three lower-division ladders are populated');
+  ok(v2.promotion, 'elite lower-division coaches receive promotion offers up the division ladder');
+  ok(v2.weather, 'weekly matchups have deterministic weather');
+  ok(v2.plan === 'airRaid' && v2.planApplied, 'weekly game plans change team configuration');
+  ok(v2.stats && v2.awards, 'player statistics and award evaluation survive a season');
+  ok(v2.worldNews, 'season results create living-world headlines');
+  ok(v2.history === 8 && v2.longYear >= 2033, 'an eight-season lower-division dynasty completes without corruption');
+  ok(v2.realign >= 1, 'conference realignment evolves during a long dynasty');
+  ok(v2.crest, 'original generated team crests render as SVG');
+
   group('No runtime errors');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));
 

@@ -29,6 +29,8 @@
     { id: 'star', label: 'Star', head: 18, w: 11 },
     { id: 'elite', label: 'Elite', head: 26, w: 3 }
   ];
+  var DEALBREAKERS = ['playingTime','championships','proPotential','nil','proximity','coachStability'];
+  var DEALBREAKER_LABEL = { playingTime:'Early Playing Time', championships:'Championship Contender', proPotential:'Path to the Pros', nil:'NIL Opportunity', proximity:'Close to Home', coachStability:'Coach Stability' };
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
@@ -69,12 +71,13 @@
     var pot = clamp(ovr + Math.round(dev.head * (0.4 + rng() * 0.9)) + (5 - stars <= 1 ? 4 : 0), ovr, 99);
     return {
       id: uid('p'), name: N.make(rng), pos: pos, group: POS_GROUP[pos],
-      year: isRecruit ? 'FR' : year, stars: stars, ovr: ovr, pot: pot, dev: dev.id
+      year: isRecruit ? 'FR' : year, stars: stars, ovr: ovr, pot: pot, dev: dev.id,
+      durability: 55 + Math.floor(rng() * 36), fatigue: 0, morale: 65 + Math.floor(rng() * 21), injuries: [], stats: { career: {}, seasons: {} }
     };
   }
 
   var GameProgram = {
-    POS_PLAN: POS_PLAN, YEARS: YEARS,
+    POS_PLAN: POS_PLAN, YEARS: YEARS, DEALBREAKERS: DEALBREAKERS, DEALBREAKER_LABEL: DEALBREAKER_LABEL,
 
     // ---- roster generation ------------------------------------------------
     generateRoster: function (rng, prestige) {
@@ -105,12 +108,16 @@
     },
 
     posGroup: function (roster, pos) {
-      return roster.filter(function (p) { return p.pos === pos; }).sort(function (a, b) { return b.ovr - a.ovr; });
+      return roster.filter(function (p) { return p.pos === pos && (!window.GameFootball || window.GameFootball.available(p)); }).sort(function (a, b) {
+        var av = window.GameFootball ? window.GameFootball.effectiveOvr(a) : a.ovr;
+        var bv = window.GameFootball ? window.GameFootball.effectiveOvr(b) : b.ovr;
+        return bv - av;
+      });
     },
     topAvg: function (roster, pos, n) {
       var g = GameProgram.posGroup(roster, pos).slice(0, n);
       if (!g.length) return 55;
-      return g.reduce(function (s, p) { return s + p.ovr; }, 0) / g.length;
+      return g.reduce(function (s, p) { return s + (window.GameFootball ? window.GameFootball.effectiveOvr(p) : p.ovr); }, 0) / g.length;
     },
 
     // Unit + overall ratings derived from the depth chart.
@@ -139,7 +146,8 @@
       var coachBump = ((c.offense + c.defense + c.motivation + c.development) / 4 - 65) * 0.10;
       var sf = GameProgram.staffEffects(state);
       var staffBump = (sf.off + sf.def) * 0.25;
-      return clamp(Math.round(baseline + rosterMod + coachBump + staffBump), 35, 99);
+      var difficulty = window.GameDifficulty ? window.GameDifficulty.get(state) : { opponent: 0 };
+      return clamp(Math.round(baseline + rosterMod + coachBump + staffBump - (difficulty.opponent || 0)), 35, 99);
     },
 
     // Aggregate coaching-staff effects (safe when no staff module/loaded).
@@ -189,7 +197,7 @@
         board.push({
           id: uid('r'), name: identity.name, hometown: identity.hometown, state: identity.state,
           highSchool: identity.highSchool, pos: pos, stars: stars,
-          proj: proj, pot: pot, dev: dev.id,
+          proj: proj, pot: pot, dev: dev.id, dealbreaker: pick(rng, DEALBREAKERS), visited: false,
           lean: Math.round(lean), status: 'open', heat: 0
         });
       }
@@ -204,6 +212,7 @@
       var pts = 8 + c.recruiting * 0.09 + state.program.nilLevel * 0.05 + sf.recruiting * 0.4;
       if (window.GameCareer) pts += window.GameCareer.storeEffects(state).recruiting; // store: analytics/jet
       if (window.GameScandal) pts *= window.GameScandal.recruitingPenaltyFactor(state); // NCAA sanctions
+      if (window.GameDifficulty) pts *= window.GameDifficulty.get(state).recruiting || 1;
       return Math.round(pts);
     },
 
@@ -217,6 +226,14 @@
       // Rivals pull uncommitted prospects: the less you've invested, the more
       // likely a prospect commits elsewhere. Higher stars leave faster.
       rec.board.forEach(function (p) {
+        if (p.status === 'committed') {
+          var fit = GameProgram.pitchGrade(state, p).score;
+          if (fit < 50 && rng() < (50 - fit) * 0.0015) {
+            p.status = 'open'; p.lean = 72; p.decommitted = true;
+            rec.commits = rec.commits.filter(function (id) { return id !== p.id; });
+          }
+          return;
+        }
         if (p.status !== 'open') return;
         // Rivals poach blue chips fast if you're not actively invested.
         var leaveP = 0.02 + (p.stars - 2) * 0.03 - p.lean * 0.0006 - p.heat * 0.02;
@@ -237,6 +254,8 @@
       // for everyone, so blue chips demand real, focused investment.
       var sf = GameProgram.staffEffects(state);
       var base = 1.35 + team.prestige * 0.06 + state.program.nilLevel * 0.012 + sf.recruiting * 0.02;
+      var fit = GameProgram.pitchGrade(state, p);
+      base *= 0.72 + fit.score * 0.0056;
       var starResist = 1 + Math.max(0, p.stars - 3) * 0.95;
       var pull = base / starResist;
       p.heat = (p.heat || 0) + pts;
@@ -247,6 +266,32 @@
         if (rec.commits.indexOf(p.id) < 0) rec.commits.push(p.id);
       }
       return { ok: true, committed: committed, lean: Math.round(p.lean), spent: pts };
+    },
+
+    pitchGrade: function (state, p) {
+      var team = T.get(state.team.id) || { prestige:5, st:'' };
+      var job = state.career.jobs[state.career.jobs.length - 1] || {};
+      var depth = GameProgram.posGroup(state.roster || [], p.pos).length;
+      var score = {
+        playingTime: clamp(94 - depth * 10, 25, 95),
+        championships: clamp(28 + team.prestige * 7 + (state.career.natTitles || 0) * 5, 20, 98),
+        proPotential: clamp(30 + team.prestige * 6 + ((state.program.draftClass || []).length * 4), 20, 98),
+        nil: clamp(state.program.nilLevel, 10, 100),
+        proximity: p.state && team.st === p.state ? 96 : 52,
+        coachStability: clamp(42 + ((state.career.year || 2025) - (job.startYear || state.career.year)) * 10 + (state.integrity.adTrust - 50) * .3, 20, 98)
+      }[p.dealbreaker || 'championships'];
+      var letter = score >= 90 ? 'A' : score >= 80 ? 'B+' : score >= 70 ? 'B' : score >= 60 ? 'C+' : score >= 50 ? 'C' : 'D';
+      return { score: Math.round(score), letter: letter, label: DEALBREAKER_LABEL[p.dealbreaker] || 'Program Fit' };
+    },
+
+    scheduleVisit: function (state, prospectId) {
+      var p = state.recruiting.board.filter(function (x) { return x.id === prospectId; })[0];
+      if (!p || p.status !== 'open' || p.visited || state.recruiting.points < 8) return { ok:false };
+      state.recruiting.points -= 8; p.visited = true;
+      var fit = GameProgram.pitchGrade(state, p); p.lean = clamp(p.lean + 10 + fit.score * .10, 0, 100);
+      var committed = p.lean >= 100;
+      if (committed) { p.status='committed'; if (state.recruiting.commits.indexOf(p.id)<0) state.recruiting.commits.push(p.id); }
+      return { ok:true, committed:committed, lean:Math.round(p.lean), spent:8 };
     },
 
     commitList: function (state) {
@@ -288,8 +333,9 @@
       // NIL retains more; deep backups more likely to bolt for playing time.
       var rng = E.makeRng((state.seed ^ (state.career.year * 0x9e3779b9)) >>> 0);
       var departures = [];
+      if (window.GameFootball) window.GameFootball.draftDecisions(state);
       state.roster.forEach(function (p) {
-        if (p.year === 'SR') return; // handled by graduation
+        if (p.year === 'SR' || p.leaving) return; // handled by graduation/draft
         var base = p.starter ? 0.03 : 0.10;
         var leaveP = base - state.program.nilLevel * 0.0006 + (p.stars >= 4 && !p.starter ? 0.05 : 0);
         if (rng() < clamp(leaveP, 0.01, 0.22)) { p.leaving = true; departures.push(p); }
@@ -388,6 +434,7 @@
       var team = T.get(state.team.id) || { prestige: 5 };
       var rng = E.makeRng(((state.seed || 1) ^ 0x5bd1e995) >>> 0);
       state.roster = GameProgram.generateRoster(rng, team.prestige);
+      if (window.GameFootball) window.GameFootball.ensureRoster(state);
       state.program.nilLevel = clamp(20 + team.prestige * 5, 10, 90);
       state.program.facilitiesLevel = clamp(20 + team.prestige * 5, 10, 90);
       state.program.offseasonPoints = 0;
@@ -430,6 +477,7 @@
         var rng = E.makeRng(((state.seed || 1) ^ 0x1b56c4f) >>> 0);
         state.recruiting.board = GameProgram.generateBoard(rng, team.prestige, state.career.year + 1);
       }
+      if (window.GameFootball) window.GameFootball.ensureRoster(state);
       if (window.GameStaff) window.GameStaff.ensureStaff(state); // wave 5 backfill
       if (window.GameScandal) window.GameScandal.ensureIntegrity(state); // wave 6 backfill
       if (window.GameCareer) window.GameCareer.ensureContract(state); // wave 7 backfill

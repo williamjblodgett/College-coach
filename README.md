@@ -26,8 +26,14 @@ One global object per module, plain `<script>` tags, no bundler.
 | `js/engine.js` | `GameEngine` | Serializable game state, rules, save/load with backfill |
 | `js/ui.js` | `GameUI` | Screens + rendering (title → team → coach → HQ) |
 | `js/data/teams.js` | `TeamData` | Division-tiered team registry |
-| `js/data/teams-fbs.js` | — | All 136 FBS programs (2025 alignment) |
+| `js/data/teams-fbs.js` | — | All 136 FBS programs |
+| `js/data/lower-divisions.js` | — | 96 original FCS, D-II, and D-III programs |
 | `js/data/coaches.js` | `CoachData` | Real coaches, legends, create-a-coach config |
+| `js/football.js` | `GameFootball` | Player stats, fatigue, injuries, morale, awards, draft decisions |
+| `js/story.js` | `GameStory` | Roles, relationships, badges, press conferences |
+| `js/world.js` | `GameWorld` | AI programs/coaches, news, rivalries, records, realignment |
+| `js/tactics.js` | `GameTactics` | Weekly plans and deterministic regional weather |
+| `js/saves.js` | `GameSaves` | Five IndexedDB slots, recovery snapshots, import/export |
 
 ### Save compatibility (core invariant)
 
@@ -38,11 +44,11 @@ never break**. Unknown/future keys are preserved. Saves live in `localStorage`
 
 ### Data tiering
 
-Teams roll out by division as separate data files: **FBS first** (this wave),
-then FCS, D-II, D-III. The engine treats divisions generically, so tiers drop in
-without refactors. Logos use a color-monogram fallback with a drop-in PNG
-pipeline — see [`images/logos/README.md`](images/logos/README.md) for the
-pipeline and trademark/sourcing notes.
+All four playable levels—FBS, FCS, D-II, and D-III—use the same generic season
+engine. Lower-division schools are original fictional programs, supporting a
+true unknown-assistant-to-blue-blood career without introducing additional
+trademarked brands. Every team receives a deterministic, code-generated SVG
+crest; optional licensed PNGs can still use the documented drop-in pipeline.
 
 ## Tests
 
@@ -54,7 +60,7 @@ npm install        # installs playwright-core (uses pre-installed chromium)
 npm test           # node tests/run.js
 ```
 
-## Roadmap (built in vertical waves — one feature = one commit = one deploy)
+## Gridiron Dynasty 2.0
 
 1. ✅ **Foundation** — FBS data, coach roster + create-a-coach, setup flow, HQ, PWA, tests
 2. ✅ **Season engine** — schedule, weekly sim, AP Top 25, conference titles, 12-team playoff + bowls, career rollover
@@ -65,10 +71,18 @@ npm test           # node tests/run.js
 7. ✅ **Job carousel / dynasty arc** — contracts + salary + a personal wallet, end-of-season offers from bigger programs seeded by record/prestige/reputation, start-from-the-bottom, and a coach store to spend your salary
 8. ✅ **Championship & bowl cutscene** — trophy presentation with team-colored confetti + career milestones
 9. ✅ **Coach progression & notoriety** — coaching XP/levels, ability, name recognition, fame tiers, profile-gated job opportunities, unknown create-a-coach starts, explicit scandal payoffs, and richer fictional recruit identities
-10–12. Data tiers: FCS → D-II → D-III (planned)
+10. ✅ **Player football spine** — individual season/career statistics, box scores, fatigue, durability, injuries, morale, awards, records, and draft declarations
+11. ✅ **Career stories** — assistant/coordinator starts, career badges, relationships, press conferences, enriched recruiting pitches/dealbreakers/visits/decommits
+12. ✅ **Living world** — evolving AI programs, fictional AI coach turnover, persistent rivalry history, newsroom, conference realignment, and original lower-division ladders
+13. ✅ **2.0 experience** — five save slots with recovery snapshots, difficulty presets, original SVG crests, weekly game plans, regional weather, install/update/offline UX, reduced motion, and sound controls
+
+Every new career has a stable world seed. Results are reproducible within a save,
+while recruiting identities, program strategies, injuries, headlines, coaching
+changes, weather, and realignment create a different history in the next one.
 
 ## License / assets
 
-Game code is original. Team names, colors, and marks belong to their respective
-schools; no trademarked logos are bundled (see the logos README). Coach ratings
-are balance-only game values, not real-world evaluations.
+Game code, generated crests, and lower-division programs are original. FBS team
+names and colors belong to their respective schools; no trademarked school logos
+are bundled (see the logos README). Coach ratings are balance-only game values,
+not real-world evaluations.

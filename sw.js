@@ -2,7 +2,7 @@
  * Bump CACHE_NAME on every release so deploys reach devices. Network-first means
  * the newest deploy always wins when online; cache is a fallback for offline.
  */
-var CACHE_NAME = 'gridiron-dynasty-v11';
+var CACHE_NAME = 'gridiron-dynasty-v20-foundation';
 
 var CORE = [
   './',
@@ -10,27 +10,41 @@ var CORE = [
   './css/style.css',
   './js/data/teams.js',
   './js/data/teams-fbs.js',
+  './js/data/lower-divisions.js',
   './js/data/coaches.js',
   './js/data/names.js',
+  './js/registry.js',
+  './js/difficulty.js',
+  './js/crests.js',
+  './js/saves.js',
   './js/engine.js',
+  './js/football.js',
+  './js/story.js',
+  './js/world.js',
+  './js/tactics.js',
   './js/staff.js',
   './js/scandal.js',
   './js/program.js',
   './js/career.js',
   './js/season.js',
   './js/sim.js',
+  './js/pwa.js',
+  './js/audio.js',
   './js/ui.js',
   './manifest.webmanifest',
   './icons/icon.svg'
 ];
 
 self.addEventListener('install', function (e) {
-  self.skipWaiting();
   e.waitUntil(caches.open(CACHE_NAME).then(function (c) {
     return Promise.all(CORE.map(function (u) {
       return c.add(u).catch(function () {}); // tolerate missing optional assets
     }));
   }));
+});
+
+self.addEventListener('message', function (e) {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', function (e) {

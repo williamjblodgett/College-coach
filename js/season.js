@@ -211,14 +211,16 @@
     // Begin a new season: ratings, schedule, empty records.
     start: function (state) {
       var s = state.season;
+      if (window.GameWorld) window.GameWorld.onSeasonStart(state);
       var teams = GameSeason.leagueTeams(state);
       s.seed = (hashStr(state.team.id + ':' + state.career.year) ^ (state.seed || 0)) >>> 0;
       var rng = E.makeRng(s.seed);
       var league = {};
       teams.forEach(function (t) {
         var isPlayer = t.id === state.team.id;
+        var worldEdge = window.GameWorld ? window.GameWorld.strategyEffect(state, t.id).rating : 0;
         league[t.id] = {
-          rating: ratingFor(t, state.career.year, state.coach, isPlayer),
+          rating: clamp(ratingFor(t, state.career.year, state.coach, isPlayer) + worldEdge, 35, 99),
           w: 0, l: 0, cw: 0, cl: 0, pf: 0, pa: 0, champ: false
         };
       });
@@ -229,6 +231,7 @@
       }
       s.league = league;
       s.schedule = buildSchedule(teams, rng, state.team.id);
+      if (window.GameTactics) window.GameTactics.prepareSchedule(state);
       s.rankings = computeRankings(league, teams.map(function (t) { return t.id; }));
       s.year = state.career.year;
       s.week = 1;
@@ -237,6 +240,7 @@
       s.postseason = { confChamps: {}, confGames: [], cfpSeeds: [], bracket: [], bowls: [], champion: null };
       s.record = { wins: 0, losses: 0, confWins: 0, confLosses: 0 };
       s.started = true;
+      if (window.GameFootball) window.GameFootball.onSeasonStart(state);
       if (window.GameScandal) window.GameScandal.onSeasonStart(state);
       return s;
     },
@@ -269,7 +273,7 @@
     // Commit a player-coached final score, then quick-sim the rest of the week
     // and advance. Mirrors simWeek's bookkeeping but leaves the player's game
     // to the broadcast result.
-    commitPlayerResult: function (state, homeScore, awayScore) {
+    commitPlayerResult: function (state, homeScore, awayScore, teamTotals) {
       var s = state.season;
       if (s.phase !== 'regular') return null;
       var wk = s.week;
@@ -282,9 +286,12 @@
       GameSeason.gamesInWeek(state, wk).forEach(function (g) { if (!g.played) simGame(g, s.league, rng); });
       s.rankings = computeRankings(s.league, Object.keys(s.league));
       var res = { week: wk, games: GameSeason.gamesInWeek(state, wk), playerGame: pg };
+      if (window.GameFootball && pg) window.GameFootball.recordGame(state, pg, teamTotals);
+      if (window.GameStory && pg) window.GameStory.afterGame(state, pg);
       s.week++;
       if (s.week > s.totalRegWeeks) s.phase = 'confchamp';
       if (window.GameProgram) window.GameProgram.onWeekAdvanced(state);
+      if (window.GameFootball) window.GameFootball.advanceWeek(state);
       if (window.GameScandal) window.GameScandal.maybeTrigger(state);
       GameSeason.syncPlayerRecord(state);
       return res;
@@ -300,9 +307,12 @@
       s.rankings = computeRankings(s.league, Object.keys(s.league));
       var playerGame = games.filter(function (g) { return g.home === state.team.id || g.away === state.team.id; })[0] || null;
       var wk = s.week;
+      if (window.GameFootball && playerGame) window.GameFootball.recordGame(state, playerGame);
+      if (window.GameStory && playerGame) window.GameStory.afterGame(state, playerGame);
       s.week++;
       if (s.week > s.totalRegWeeks) s.phase = 'confchamp';
       if (window.GameProgram) window.GameProgram.onWeekAdvanced(state);
+      if (window.GameFootball) window.GameFootball.advanceWeek(state);
       if (window.GameScandal) window.GameScandal.maybeTrigger(state);
       GameSeason.syncPlayerRecord(state);
       return { week: wk, games: games, playerGame: playerGame };
@@ -485,6 +495,7 @@
       var wonNatl = s.postseason.champion === id;
       var madePlayoff = (s.postseason.cfpSeeds || []).indexOf(id) >= 0;
       var finalRank = s.rankings.indexOf(id); // 0-based; -1 if unranked (shouldn't happen)
+      var playerAwards = window.GameFootball ? window.GameFootball.seasonAwards(state) : [];
 
       // Reputation: performance vs. a prestige-based expectation.
       var expectedWins = clamp(Math.round(team.prestige * 0.9 + 1), 3, 11);
@@ -517,11 +528,14 @@
         championName: (T.get(s.postseason.champion) || {}).name || '',
         reputation: state.career.reputation,
         repDelta: delta,
-        postseasonBanned: !!s.postseason.playerBanned
+        postseasonBanned: !!s.postseason.playerBanned,
+        playerAwards: playerAwards
       };
 
       // Coaching progression is earned before the carousel evaluates candidates.
       if (window.GameCareer) window.GameCareer.progressSeason(state, summary);
+      if (window.GameStory) window.GameStory.evaluateBadges(state, summary);
+      if (window.GameWorld) window.GameWorld.finishSeason(state, summary);
 
       // Compliance review: AD trust, investigation + verdict, sanctions, firing.
       if (window.GameScandal) {

@@ -17,15 +17,26 @@
   <!-- data + engine + ui (plain scripts, no build step) -->
   <script src="js/data/teams.js"></script>
   <script src="js/data/teams-fbs.js"></script>
+  <script src="js/data/lower-divisions.js"></script>
   <script src="js/data/coaches.js"></script>
   <script src="js/data/names.js"></script>
+  <script src="js/registry.js"></script>
+  <script src="js/difficulty.js"></script>
+  <script src="js/crests.js"></script>
+  <script src="js/saves.js"></script>
   <script src="js/engine.js"></script>
+  <script src="js/football.js"></script>
+  <script src="js/story.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/tactics.js"></script>
   <script src="js/staff.js"></script>
   <script src="js/scandal.js"></script>
   <script src="js/program.js"></script>
   <script src="js/career.js"></script>
   <script src="js/season.js"></script>
   <script src="js/sim.js"></script>
+  <script src="js/pwa.js"></script>
+  <script src="js/audio.js"></script>
   <script src="js/ui.js"></script>
   <script>
     (function () {
@@ -34,26 +45,8 @@
       // land on the title menu (Continue / New / Import) as the entry point.
       try { window.GameEngine.load(); } catch (e) {}
       window.GameUI.renderTitle();
-
-      // PWA: register a network-first service worker with one-time auto-reload
-      // on activation of a new version.
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function () {
-          navigator.serviceWorker.register('sw.js').then(function (reg) {
-            reg.addEventListener('updatefound', function () {
-              var nw = reg.installing;
-              if (!nw) return;
-              nw.addEventListener('statechange', function () {
-                if (nw.state === 'activated' && navigator.serviceWorker.controller &&
-                    !sessionStorage.getItem('gd-reloaded')) {
-                  sessionStorage.setItem('gd-reloaded', '1');
-                  location.reload();
-                }
-              });
-            });
-          }).catch(function () {});
-        });
-      }
+      if (window.GameSaves) window.GameSaves.init();
+      if (window.GamePWA) window.addEventListener('load', function () { window.GamePWA.init(); });
     })();
   </script>
 </body>

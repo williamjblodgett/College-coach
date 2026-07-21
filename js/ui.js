@@ -44,7 +44,8 @@
       'width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.42) + 'px;' +
       'background:linear-gradient(135deg,' + team.colors[0] + ',' + shade(team.colors[0], -18) + ');' +
       'color:' + readable(team.colors[0]) + ';border:2px solid ' + team.colors[1] + ';' });
-    wrap.appendChild(el('span', { class: 'badge-emoji', text: team.emoji || '🏈' }));
+    if (window.GameCrests) wrap.appendChild(window.GameCrests.render(team, size));
+    else wrap.appendChild(el('span', { class: 'badge-emoji', text: team.emoji || '🏈' }));
     // Attempt logo upgrade.
     var img = new Image();
     img.className = 'badge-img';
@@ -133,9 +134,18 @@
           if (hasSave && !confirm('Start a new career? Your current save will be replaced when you finish setup.')) return;
           renderTeamSelect();
         }),
-        btn('Import Save', 'ghost', importSave)
+        btn('Import Save', 'ghost', importSave),
+        window.GameSaves ? btn('Dynasty Slots', 'ghost', renderSaveSlots) : null,
+        window.GamePWA && !window.matchMedia('(display-mode: standalone)').matches ? btn('Install App', 'ghost', function () {
+          if (!window.GamePWA.canInstall()) { toast('Use your browser menu and choose Install App or Add to Home Screen.'); return; }
+          window.GamePWA.install();
+        }) : null
       ]),
-      el('p', { class: 'title-foot', text: 'v1 · Wave 1 · ' + T.byDivision('fbs').length + ' FBS programs' })
+      el('div', { class: 'title-features' }, [
+        el('span', { text: '🏈 4 divisions' }), el('span', { text: '🧑‍💼 assistant-to-legend careers' }),
+        el('span', { text: '🌎 evolving worlds' }), el('span', { text: '📴 offline PWA' })
+      ]),
+      el('p', { class: 'title-foot', text: 'v2.0 · Dynasty Engine · ' + T.byDivision('fbs').length + ' FBS programs' })
     ]);
     mount(card);
   }
@@ -149,17 +159,59 @@
     GameUI.render();
   }
 
+  function downloadText(name, text) {
+    var blob = new Blob([text], { type: 'application/json' });
+    var url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 500);
+  }
+
+  function renderSaveSlots() {
+    var Saves = window.GameSaves;
+    var holder = el('div', { class: 'slot-list' }, [el('p', { class: 'muted', text: 'Loading dynasty slots…' })]);
+    mount(el('div', { class: 'screen slots-screen' }, [
+      el('div', { class: 'screen-head' }, [el('h2', { text: 'Dynasty Saves' }), el('p', { class: 'muted', text: 'Five named careers with rolling recovery snapshots.' })]),
+      holder,
+      el('div', { class: 'sticky-footer' }, [el('div', { class: 'sf-info', text: 'Autosaves retain five recovery points.' }), el('div', { class: 'sf-actions' }, [btn('Back', 'ghost', renderTitle)])])
+    ]));
+    Saves.list().then(function (slots) {
+      var byId = {}; slots.forEach(function (slot) { byId[slot.id] = slot; }); holder.innerHTML = '';
+      for (var i = 1; i <= Saves.MAX_SLOTS; i++) (function (id) {
+        var slot = byId[id];
+        if (!slot) {
+          holder.appendChild(el('div', { class: 'slot-card empty' }, [
+            el('div', { class: 'slot-main' }, [el('div', { class: 'card-title', text: 'Empty Slot ' + id.slice(-1) }), el('div', { class: 'muted', text: 'Begin a new coaching universe.' })]),
+            btn('New Dynasty', 'primary', function () { Saves.setActive(id); E.clearSave(); renderTeamSelect(); })
+          ])); return;
+        }
+        holder.appendChild(el('div', { class: 'slot-card' + (Saves.activeId() === id ? ' active' : '') }, [
+          el('div', { class: 'slot-main' }, [
+            el('div', { class: 'card-title', text: slot.name }),
+            el('div', { class: 'card-sub', text: (slot.summary.coach || 'Coach') + ' · ' + (slot.summary.team || 'Unassigned') + ' · ' + slot.summary.year }),
+            el('div', { class: 'muted slot-time', text: new Date(slot.updatedAt).toLocaleString() + ' · ' + (slot.snapshots || []).length + ' recovery saves' })
+          ]),
+          el('div', { class: 'slot-actions' }, [
+            btn('Continue', 'primary', function () { Saves.loadSlot(id).then(function (state) { E.deserialize(state); E.save(); GameUI.render(); }).catch(function (e) { alert(e.message); }); }),
+            btn('Rename', 'ghost', function () { var name = prompt('Dynasty name:', slot.name); if (name) Saves.renameSlot(id, name).then(renderSaveSlots); }),
+            btn('Export', 'ghost', function () { Saves.exportSlot(id).then(function (raw) { downloadText('gridiron-' + id + '.json', raw); }); }),
+            btn('Delete', 'ghost', function () { if (confirm('Delete ' + slot.name + '? Export it first if you may want it later.')) Saves.deleteSlot(id).then(renderSaveSlots); })
+          ])
+        ]));
+      })('slot-' + i);
+    }).catch(function () { holder.innerHTML = '<p class="muted">Save slots are unavailable in this browser. The legacy local save remains active.</p>'; });
+  }
+
   // ---- Screen: Team Select -------------------------------------------------
   function renderTeamSelect() {
-    var confs = T.conferences('fbs');
-    var state = { conf: 'All', q: '', bottom: pick.startBottom || false };
+    var state = { division: pick.division || 'fbs', conf: 'All', q: '', bottom: pick.startBottom || false };
+    var confs = T.conferences(state.division);
 
     var list = el('div', { class: 'grid team-grid' });
     var subtitle = el('p', { class: 'muted select-count' });
 
     function refresh() {
       list.innerHTML = '';
-      var teams = T.byDivision('fbs').filter(function (t) {
+      var teams = T.byDivision(state.division).filter(function (t) {
         if (state.bottom && t.prestige > 3) return false; // start-from-the-bottom
         if (state.conf !== 'All' && t.conf !== state.conf) return false;
         if (state.q) {
@@ -217,12 +269,20 @@
       chips[1].className = 'chip' + (state.bottom ? ' active' : '');
     }
 
+    var divisionToggle = el('div', { class: 'mode-toggle division-toggle' }, [
+      ['fbs','FBS'],['fcs','FCS'],['d2','Division II'],['d3','Division III']
+    ].map(function (d) {
+      return el('button', { class: 'chip' + (state.division === d[0] ? ' active' : ''), onclick: function () {
+        pick.division = d[0]; pick.team = null; renderTeamSelect();
+      } }, [d[1]]);
+    }));
+
     var screen = el('div', { class: 'screen' }, [
       el('div', { class: 'screen-head' }, [
         el('h2', { text: 'Choose Your Program' }),
         el('p', { class: 'muted', text: 'Pick a blue-blood and win now, or start at a bottom-tier program and climb the carousel.' })
       ]),
-      modeToggle,
+      divisionToggle, modeToggle,
       el('div', { class: 'toolbar' }, [confSel, search, subtitle]),
       list, footer
     ]);
@@ -282,6 +342,14 @@
     function refresh() {
       body.innerHTML = '';
       if (pick.coachTab === 'custom') {
+        pick.startRole = pick.startRole || 'assistant';
+        body.appendChild(el('div', { class: 'role-picker panel' }, [
+          el('h3', { text: 'Starting Role' }),
+          el('p', { class: 'muted', text: 'Begin on a staff and earn a head-coaching interview, or take over a small program immediately.' }),
+          el('div', { class: 'scandal-chips' }, [
+            ['assistant','Assistant'],['oc','Offensive Coordinator'],['dc','Defensive Coordinator'],['headCoach','Small-School Head Coach']
+          ].map(function (r) { return el('button', { class: 'chip' + (pick.startRole === r[0] ? ' active' : ''), onclick: function () { pick.startRole = r[0]; refresh(); } }, [r[1]]); }))
+        ]));
         body.appendChild(renderBuilder(function (built) { pick.coach = built; }));
       } else {
         var pool = pick.coachTab === 'real' ? CoachData.real
@@ -313,7 +381,8 @@
         btn('Start Career  🏈', 'primary', function () {
           if (!pick.coach) { alert('Choose or create a coach first.'); return; }
           if (!pick.coach.name || !pick.coach.name.trim()) { alert('Give your coach a name.'); return; }
-          if (pick.coach.source === 'custom' && pick.team && pick.team.prestige > 3) {
+          pick.coach.role = pick.coach.source === 'custom' ? (pick.startRole || 'assistant') : 'headCoach';
+          if (pick.coach.source === 'custom' && pick.coach.role === 'headCoach' && pick.team && pick.team.prestige > 3) {
             alert('Created coaches begin as unknowns. Choose a prestige 1-3 program and earn bigger opportunities.');
             pick.startBottom = true;
             renderTeamSelect();
@@ -503,7 +572,7 @@
         el('h2', { class: 'hq-team', text: team.name + ' ' + team.nick }),
         el('div', { class: 'hq-coach' }, [
           coachAvatar(coach, 26),
-          el('span', { text: 'Head Coach ' + coach.name + ' · ' + (s.career.year) + ' season' })
+          el('span', { text: (window.GameStory ? window.GameStory.roleLabel(s.career.role) : 'Head Coach') + ' ' + coach.name + ' · ' + (s.career.year) + ' season' })
         ])
       ])
     ]);
@@ -539,7 +608,14 @@
     var coachPanel = el('div', { class: 'panel' }, [
       el('h3', { text: '🧢 Your Coach' }),
       el('p', { class: 'muted', text: coach.bio || '' }),
-      el('div', { class: 'kv-list' }, CoachData.SKILLS.map(skillBar))
+      el('div', { class: 'kv-list' }, CoachData.SKILLS.map(skillBar)),
+      window.GameStory && s.career.badges.length ? el('div', { class: 'badge-strip' }, s.career.badges.map(function (id) {
+        var b = window.GameStory.BADGES.filter(function (x) { return x.id === id; })[0];
+        return el('span', { class: 'career-badge', title: b ? b.desc : '', text: b ? b.name : id });
+      })) : el('p', { class: 'muted coach-note', text: 'Career badges unlock through distinctive achievements.' }),
+      window.GameStory ? el('div', { class: 'relationship-row' }, Object.keys(s.career.relationships).map(function (key) {
+        return el('span', { class: 'relationship-chip', text: key.toUpperCase() + ' ' + s.career.relationships[key] });
+      })) : null
     ]);
 
     var rivals = (team.rivals || []).map(function (id) { return T.get(id); }).filter(Boolean);
@@ -574,6 +650,7 @@
         }),
         btn('📋 Roster', 'ghost', function () { renderRoster('hq'); }),
         btn('🧑‍🏫 Staff', 'ghost', function () { renderStaff('hq'); }),
+        window.GameWorld ? btn('📰 Newsroom', 'ghost', function () { renderNewsroom(); }) : null,
         window.GameCareer ? btn('🛍️ Store', 'ghost', function () { renderStore('hq'); }) : null,
         window.GameScandal ? btn('⚙️ Settings', 'ghost', function () { renderSettings(); }) : null,
         btn('💾 Save', 'ghost', function () { E.save(); toast('Career saved.'); }),
@@ -628,6 +705,30 @@
       hero, stats, contractBar,
       el('div', { class: 'panel-grid' }, [coachPanel, rivalPanel]),
       compliancePanel, nextPanel
+    ]);
+    mount(screen);
+  }
+
+  // ---- Living world newsroom ----------------------------------------------
+  function renderNewsroom() {
+    var s=E.state,W=window.GameWorld,w=W.ensure(s),records=w.records||{};
+    applyTheme(T.get(s.team.id));
+    var news=(w.news||[]).slice(0,30), moves=(w.realignment||[]).slice().reverse();
+    var recordRows=Object.keys(records).map(function(key){var r=records[key],team=T.get(r.teamId);return el('div',{class:'news-row'},[
+      el('span',{class:'news-kind',text:key.replace(/([A-Z])/g,' $1').toUpperCase()}),
+      el('span',{class:'news-copy',text:r.player+' · '+r.value+' · '+(team?team.name:'')+' '+r.year})
+    ]);});
+    var screen=el('div',{class:'screen newsroom'},[
+      el('div',{class:'screen-head'},[el('h2',{text:'College Football Newsroom'}),el('p',{class:'muted',text:'Your dynasty remembers championships, coaching moves, records, rivalries, and conference shifts.'})]),
+      el('div',{class:'panel'},[el('h3',{text:'Latest Headlines'})].concat(news.length?news.map(function(n){var team=n.teamId&&T.get(n.teamId);return el('article',{class:'news-story'},[
+        el('div',{class:'news-kicker',text:n.year+(n.week?' · Week '+n.week:'')+' · '+n.kind.toUpperCase()}),
+        el('div',{class:'card-title',text:n.headline}),el('p',{class:'muted',text:n.detail+(team?' · '+team.name:'')})
+      ]);}):[el('p',{class:'muted',text:'The first headlines will arrive as your dynasty unfolds.'})])),
+      el('div',{class:'panel-grid'},[
+        el('div',{class:'panel'},[el('h3',{text:'Program Record Book'})].concat(recordRows.length?recordRows:[el('p',{class:'muted',text:'Individual records begin after your first season.'})])),
+        el('div',{class:'panel'},[el('h3',{text:'Realignment History'})].concat(moves.length?moves.map(function(m){var up=T.get(m.up),down=T.get(m.down);return el('div',{class:'news-row',text:m.year+' · '+(up?up.name:m.up)+' → '+m.to+' · '+(down?down.name:m.down)+' → '+m.from});}):[el('p',{class:'muted',text:'Conference maps have held—for now.'})]))
+      ]),
+      el('div',{class:'sticky-footer'},[el('div',{class:'sf-info'},[el('span',{text:(w.news||[]).length+' archived stories · '+Object.keys(w.rivalries||{}).length+' tracked rivalries'})]),el('div',{class:'sf-actions'},[btn('← Back to HQ','primary',function(){renderHQ();})])])
     ]);
     mount(screen);
   }
@@ -742,6 +843,15 @@
       var Scandal = window.GameScandal;
       var pendingScandal = Scandal && Scandal.pendingEvent(s);
       if (pendingScandal) wrap.appendChild(scandalCard(pendingScandal));
+      var pendingPress = window.GameStory && window.GameStory.pending(s);
+      if (pendingPress) wrap.appendChild(el('div', { class: 'press-card' }, [
+        el('div', { class: 'sc-flag', text: 'PRESS CONFERENCE' }),
+        el('div', { class: 'sc-title', text: pendingPress.title }),
+        el('div', { class: 'sc-blurb', text: pendingPress.prompt }),
+        el('div', { class: 'sc-options' }, pendingPress.options.map(function (o) { return el('button', { class: 'dc-opt', onclick: function () { window.GameStory.resolvePress(s, o.id); E.save(); draw(); } }, [
+          el('div', { class: 'dc-opt-label', text: o.label }), el('div', { class: 'dc-opt-desc', text: o.desc })
+        ]); }))
+      ]));
 
       // Postseason-ban notice.
       if (Scandal && Scandal.postseasonBanned(s)) {
@@ -779,6 +889,18 @@
               ])
             ])
           ]));
+          if (window.GameTactics) {
+            var tactical = window.GameTactics, forecast = myGame.weather || tactical.forecast(s, myGame);
+            wrap.appendChild(el('div', { class: 'panel game-plan' }, [
+              el('h4', { text: 'Weekly Game Plan' }),
+              el('p', { class: 'muted forecast', text: forecast.kind + ' · ' + forecast.temp + '°F · wind ' + forecast.wind + ' mph' }),
+              el('div', { class: 'mode-toggle' }, Object.keys(tactical.PLANS).map(function (id) {
+                var plan=tactical.PLANS[id];
+                return el('button', { class: 'chip' + (s.season.gamePlan === id ? ' active' : ''), title: plan.desc, onclick: function () { tactical.setPlan(s,id); E.save(); draw(); } }, [plan.name]);
+              })),
+              el('p', { class: 'muted', text: tactical.PLANS[s.season.gamePlan || 'balanced'].desc })
+            ]));
+          }
         } else {
           wrap.appendChild(el('p', { class: 'muted', text: 'BYE week — no game scheduled.' }));
         }
@@ -1016,24 +1138,28 @@
       if (!open.length) list.appendChild(el('p', { class: 'muted', text: 'No open prospects remain on the board.' }));
       open.forEach(function (p) {
         var leanPct = Math.round(p.lean);
+        var pitch = P.pitchGrade(s, p);
         var row = el('div', { class: 'board-row' }, [
           el('span', { class: 'br-rank', text: '#' + p.rank }),
           el('span', { class: 'stars s' + p.stars, text: '★'.repeat(p.stars) }),
           el('span', { class: 'br-pos', text: p.pos }),
           el('span', { class: 'br-name' }, [
             el('span', { text: p.name }),
-            el('span', { class: 'br-home muted', text: p.hometown ? (p.hometown + ', ' + p.state + ' / ' + p.highSchool) : 'Fictional prospect' })
+            el('span', { class: 'br-home muted', text: p.hometown ? (p.hometown + ', ' + p.state + ' / ' + p.highSchool) : 'Fictional prospect' }),
+            el('span', { class: 'br-fit', text: pitch.label + ': ' + pitch.letter + (p.visited ? ' · Visited' : '') })
           ]),
           el('span', { class: 'br-ovr', text: p.proj }),
           el('span', { class: 'br-lean' }, [el('span', { class: 'br-lean-fill', style: 'width:' + leanPct + '%' })]),
-          rec.signed ? null : el('button', {
-            class: 'btn br-btn', disabled: rec.points <= 0 ? 'disabled' : null,
-            onclick: function () {
+          rec.signed ? null : el('span', { class: 'br-actions' }, [
+            el('button', { class: 'btn br-btn', disabled: rec.points <= 0 ? 'disabled' : null, onclick: function () {
               var res = P.recruitEffort(s, p.id, Math.min(4, rec.points));
               if (res && res.committed) toast('🎉 ' + p.name + ' commits to ' + T.get(s.team.id).name + '!');
               E.save(); draw();
-            }
-          }, ['Recruit'])
+            } }, ['Recruit']),
+            el('button', { class: 'btn br-btn ghost', disabled: rec.points < 8 || p.visited ? 'disabled' : null, onclick: function () {
+              var res = P.scheduleVisit(s, p.id); if (res && res.committed) toast('🎉 ' + p.name + ' commits after his visit!'); E.save(); draw();
+            } }, [p.visited ? 'Visited' : 'Visit'])
+          ])
         ]);
         list.appendChild(row);
       });
@@ -1078,6 +1204,9 @@
           return el('div', { class: 'sum-badge' }, [el('span', { class: 'sb-emoji', text: b[0] }), el('span', { text: b[1] })]);
         }) : [el('p', { class: 'muted', text: sum.wins >= 6 ? 'Bowl-eligible season.' : 'A building year.' })]),
         el('div', { class: 'sum-rep', text: 'Reputation ' + (sum.repDelta >= 0 ? '+' : '') + sum.repDelta + ' → ' + sum.reputation }),
+        sum.playerAwards && sum.playerAwards.length ? el('div', { class: 'season-awards' }, [
+          el('div', { class: 'sec-sub', text: 'Player Honors' })
+        ].concat(sum.playerAwards.map(function (a) { return el('div', { class: 'sum-badge' }, [el('span', { text: '🏅' }), el('span', { text: a.player + ' · ' + a.name })]); }))) : null,
         champ ? el('div', { class: 'sum-natl', text: 'National Champion: ' + champ.name + ' ' + champ.nick }) : null,
         verdictBlock(sum),
         el('div', { class: 'btn-row', style: 'justify-content:center;margin-top:18px' },
@@ -1404,9 +1533,20 @@
     };
     var descEl = el('p', { class: 'muted set-desc' });
     function refreshDesc() { descEl.textContent = descs[s.settings.scandalIntensity || 'realistic']; }
+    function settingChips(values, current, onPick) {
+      return el('div', { class: 'scandal-chips' }, values.map(function (item) {
+        return el('button', { class: 'chip' + (current() === item.id ? ' active' : ''), onclick: function () { onPick(item.id); renderSettings(); } }, [item.label]);
+      }));
+    }
 
     var screen = el('div', { class: 'screen settings-screen' }, [
       el('div', { class: 'screen-head' }, [el('h2', { text: '⚙️ Settings' })]),
+      window.GameDifficulty ? el('div', { class: 'panel' }, [
+        el('h3', { text: 'Challenge' }),
+        el('p', { class: 'muted', text: 'Every preset is transparent: it changes opponent strength, recruiting, progression, injuries, and scrutiny.' }),
+        settingChips(window.GameDifficulty.labels(), function () { return s.settings.difficulty || 'dynasty'; }, function (id) { s.settings.difficulty = id; E.save(); }),
+        el('p', { class: 'muted set-desc', text: 'Current modifiers: ' + JSON.stringify(window.GameDifficulty.get(s)) })
+      ]) : null,
       el('div', { class: 'panel' }, [
         el('h3', { text: '⚖️ Scandal Intensity' }),
         el('p', { class: 'muted', text: 'How often compliance/scandal dilemmas appear. Change it any time.' }),
@@ -1425,6 +1565,17 @@
               e.target.classList.add('active');
             } }, [sp.charAt(0).toUpperCase() + sp.slice(1)]);
         }))
+      ]),
+      el('div', { class: 'panel' }, [
+        el('h3', { text: 'Accessibility' }),
+        el('button', { class: 'chip' + (s.settings.sound ? ' active' : ''), onclick: function () {
+          s.settings.sound = !s.settings.sound; E.save(); renderSettings();
+        } }, [s.settings.sound ? 'Sound: On' : 'Sound: Off']),
+        el('button', { class: 'chip' + (s.settings.reducedMotion ? ' active' : ''), onclick: function () {
+          s.settings.reducedMotion = !s.settings.reducedMotion;
+          document.documentElement.classList.toggle('reduced-motion', s.settings.reducedMotion);
+          E.save(); renderSettings();
+        } }, [s.settings.reducedMotion ? 'Reduced Motion: On' : 'Reduced Motion: Off'])
       ]),
       el('div', { class: 'sticky-footer' }, [
         el('div', { class: 'sf-info' }, [el('span', { text: 'Settings save automatically.' })]),
@@ -1568,7 +1719,11 @@
         return el('div', { class: 'ros-row' + (p.starter ? ' starter' : '') }, [
           el('span', { class: 'ros-pos', text: p.pos }),
           el('span', { class: 'stars s' + p.stars, text: '★'.repeat(p.stars) }),
-          el('span', { class: 'ros-name', text: p.name + (p.transfer ? ' ⇄' : '') }),
+          el('span', { class: 'ros-name' }, [
+            el('span', { text: p.name + (p.transfer ? ' ⇄' : '') }),
+            p.injury && p.injury.weeks > 0 ? el('span', { class: 'player-status injured', text: p.injury.name + ' · ' + p.injury.weeks + 'w' })
+              : el('span', { class: 'player-status muted', text: 'MOR ' + (p.morale == null ? 70 : p.morale) + ' · FAT ' + (p.fatigue || 0) })
+          ]),
           el('span', { class: 'ros-yr', text: p.year }),
           el('span', { class: 'ros-ovr', text: p.ovr }),
           el('span', { class: 'ros-pot muted', text: p.pot > p.ovr ? '↗' + p.pot : '—' })
@@ -1583,6 +1738,7 @@
       ]),
       el('div', { class: 'stat-grid' }, [
         rosterStat('Roster OVR', rr.overall), rosterStat('Offense', rr.off), rosterStat('Defense', rr.def),
+        rosterStat('Injured', s.roster.filter(function (p) { return p.injury && p.injury.weeks > 0; }).length),
         rosterStat('NIL', s.program.nilLevel), rosterStat('Facilities', s.program.facilitiesLevel)
       ]),
       el('div', { class: 'panel-grid roster-grid' }, panels),
@@ -1707,18 +1863,24 @@
     var awayCfg = playerSide === 'away'
       ? { id: pg.away, off: pr.off, def: pr.def, special: pr.special, isPlayer: true }
       : { id: pg.away, off: or.off, def: or.def, isPlayer: false };
+    var tactical = null;
+    if (window.GameTactics) {
+      tactical = window.GameTactics.apply(s, playerSide === 'home' ? homeCfg : awayCfg);
+    }
 
     var oppRankIdx = s.season.rankings.indexOf(oppId);
     var stakes = pg.rivalry ? '🔥 Rivalry Game' : (pg.conf ? (T.get(playerId).conf + ' Game') : 'Non-Conference');
     if (oppRankIdx >= 0 && oppRankIdx < 25) stakes += ' · vs #' + (oppRankIdx + 1);
 
     applyTheme(T.get(playerId));
-    var homeTeam = T.get(pg.home), venue = homeTeam.stadium + ' · ' + homeTeam.city + ', ' + homeTeam.st;
+    var homeTeam = T.get(pg.home), weather = pg.weather || (tactical && tactical.weather);
+    var venue = homeTeam.stadium + ' · ' + homeTeam.city + ', ' + homeTeam.st + (weather ? ' · ' + weather.kind + ' ' + weather.temp + '°F' : '');
     var g = Sim.create({
       home: homeCfg, away: awayCfg, playerSide: playerSide,
       stakes: stakes, neutral: false, venue: venue,
       seed: (s.season.seed ^ (s.season.week * 40503)) >>> 0
     });
+    if (tactical) g[playerSide].tempo = tactical.tempo;
 
     var playing = false, speed = SPEEDS[(s.settings && s.settings.broadcastSpeed) || 'normal'] || SPEEDS.normal, timer = null, wasPlaying = false;
 
@@ -1953,7 +2115,7 @@
           g.ot ? el('div', { class: 'fc-ot', text: g.ot + ' OT' }) : null,
           el('div', { class: 'fc-stat', text: statLine() }),
           btn('Continue  →', 'primary big', function () {
-            lastWeekResult = Season.commitPlayerResult(s, res.homeScore, res.awayScore);
+            lastWeekResult = Season.commitPlayerResult(s, res.homeScore, res.awayScore, g[playerSide].stats);
             E.save(); seasonTab = 'week'; renderSeason();
           })
         ])

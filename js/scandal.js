@@ -276,6 +276,7 @@
 
       // Investigation roll.
       var invMult = window.GameCareer ? window.GameCareer.storeEffects(state).invMult : 1; // private investigator
+      if (window.GameDifficulty) invMult *= window.GameDifficulty.get(state).scrutiny || 1;
       var invChance = clamp(((i.heat - 25) / 120 + (cohesion < 55 ? 0.06 : 0) + (i._severeFlag ? 0.35 : 0)) * invMult, 0, 0.9);
       var risky = i.riskyThisSeason || 0;
       var verdict = { year: state.career.year, investigated: false, severity: 'none', sanctions: [], fired: false, heatBefore: i.heat, escaped: false };
@@ -304,6 +305,16 @@
         state.career.nameRecognition = clamp(state.career.nameRecognition + verdict.payoff.recognition, 0, 100);
         state.career.fame = clamp(state.career.fame + verdict.payoff.fame, 0, 100);
         verdict.sanctions.push('No case opened - the risky moves paid off this season.');
+      }
+
+      // A long-running pattern eventually becomes institutional evidence even
+      // when individual seasons escaped scrutiny. This keeps serial misconduct
+      // from becoming an indefinitely safe dominant strategy.
+      var careerRisks = i.allegations.filter(function (a) { return a.risky; }).length;
+      if (!verdict.fired && careerRisks >= 10 && risky > 0) {
+        verdict.investigated = true; verdict.severity = 'severe'; verdict.escaped = false;
+        verdict.sanctions = ['A pattern-of-conduct review connected ' + careerRisks + ' risky decisions.'];
+        GameScandal.applySanctions(state, 'severe', verdict);
       }
 
       // AD patience: sustained losing or a wrecked reputation gets you fired

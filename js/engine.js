@@ -8,7 +8,7 @@
   'use strict';
 
   var SAVE_KEY = 'gridiron-save-v1';
-  var SAVE_VERSION = 1;
+  var SAVE_VERSION = 2;
 
   // ---- deep helpers ---------------------------------------------------------
   function isPlainObject(v) {
@@ -45,6 +45,42 @@
     return JSON.parse(JSON.stringify(v));
   }
 
+  function hashSeed(seed, namespace, salt) {
+    var h = (seed >>> 0) ^ 2166136261;
+    var text = String(namespace || 'world') + ':' + String(salt == null ? '' : salt);
+    for (var i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+
+  // Ordered migrations repair nested array records that template backfill
+  // cannot reach. Always migrate a clone so a failed import remains untouched.
+  var MIGRATIONS = {
+    1: function (s) {
+      s.world = s.world || { seed: s.seed || 0, era: 1, news: [], records: {} };
+      s.settings = s.settings || {};
+      if (!s.settings.difficulty) s.settings.difficulty = 'dynasty';
+      if (s.settings.reducedMotion == null) s.settings.reducedMotion = false;
+      (s.roster || []).forEach(function (p) {
+        if (p.durability == null) p.durability = 65;
+        if (p.fatigue == null) p.fatigue = 0;
+        if (p.morale == null) p.morale = 70;
+        if (!p.injuries) p.injuries = [];
+        if (!p.stats) p.stats = {};
+      });
+      s.saveVersion = 2;
+      return s;
+    }
+  };
+
+  function migrate(input) {
+    var s = clone(input), version = Math.max(1, Number(s.saveVersion) || 1);
+    while (version < SAVE_VERSION) {
+      if (!MIGRATIONS[version]) throw new Error('Missing save migration from version ' + version);
+      s = MIGRATIONS[version](s); version = Number(s.saveVersion) || version + 1;
+    }
+    return s;
+  }
+
   // ---- deterministic RNG (mulberry32) --------------------------------------
   function makeRng(seed) {
     var a = seed >>> 0;
@@ -64,6 +100,7 @@
       saveVersion: SAVE_VERSION,
       createdAt: 0,
       seed: 0,
+      world: { seed: 0, era: 1, news: [], records: {} },
       screen: 'title',            // current UI screen
       // The coach the player controls.
       coach: {
@@ -100,6 +137,11 @@
         fame: 15,                 // national profile with fans, media, and boosters
         coachXp: 0,
         coachLevel: 1,
+        role: 'headCoach',
+        badges: [],
+        relationships: { players: 60, staff: 60, boosters: 55, media: 50, ad: 60 },
+        pressHistory: [],
+        pendingPress: null,
         legacyPoints: 0,
         wallet: 0,                // personal money ($M) accumulated from salary (wave 7)
         spent: 0,                 // lifetime personal spending ($M)
@@ -123,6 +165,7 @@
         postseason: {             // filled as postseason progresses
           confChamps: {}, confGames: [], cfpSeeds: [], bracket: [], bowls: [], champion: null
         },
+        gamePlan: 'balanced',
         record: { wins: 0, losses: 0, confWins: 0, confLosses: 0 }
       },
       roster: [],                 // player objects (wave 4): {id,name,pos,group,year,stars,ovr,pot,dev}
@@ -143,6 +186,7 @@
         portal: [],               // incoming transfer pool (offseason)
         departures: [],           // players who left this offseason
         signedClass: [],          // most recent signed class (for the cutscene)
+        draftClass: [],           // players departing for the pro draft
         staffBudget: 0            // points for hiring assistants (wave 5)
       },
       // Coaching staff cabinet + hiring market (wave 5).
@@ -171,6 +215,9 @@
       settings: {
         sound: true,
         broadcastSpeed: 'normal',
+        difficulty: 'dynasty',
+        difficultyCustom: null,
+        reducedMotion: false,
         scandalIntensity: 'realistic'  // off | light | realistic | chaotic (wave: optional scandals)
       }
     };
@@ -178,7 +225,7 @@
 
   // ---- validation ----------------------------------------------------------
   function normalize(state) {
-    var s = backfill(freshState(), state);
+    var s = backfill(freshState(), migrate(state));
     // Clamp coach ratings into range.
     var r = s.coach.ratings, k;
     for (k in r) {
@@ -197,12 +244,19 @@
     freshState: freshState,
     backfill: backfill,
     makeRng: makeRng,
+    hashSeed: hashSeed,
+    stream: function (namespace, salt, state) {
+      var s = state || this.state || {};
+      return makeRng(hashSeed(s.seed || (s.world && s.world.seed) || 1, namespace, salt));
+    },
+    migrate: migrate,
 
     // Create a brand-new career from a chosen coach + team.
     newCareer: function (coach, team) {
       var s = freshState();
       s.createdAt = Date.now();
       s.seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+      s.world.seed = s.seed;
       s.coach = backfill(s.coach, coach || {});
       if (team) {
         s.team = { id: team.id, name: team.name, division: team.div || team.division || 'fbs' };
@@ -211,6 +265,7 @@
           teamId: team.id, startYear: s.career.year, endYear: null, wins: 0, losses: 0
         }];
         var source = s.coach.source || 'custom';
+        s.career.role = s.coach.role || 'headCoach';
         var ratings = s.coach.ratings || {};
         var avg = 0, count = 0;
         Object.keys(ratings).forEach(function (key) { avg += ratings[key] || 0; count++; });
@@ -244,6 +299,7 @@
       // Generate the initial roster + recruiting board (wave 4).
       if (window.GameProgram && team) window.GameProgram.initProgram(this.state);
       if (window.GameCareer && team) window.GameCareer.initContract(this.state);
+      if (window.GameStory) window.GameStory.ensure(this.state);
       return this.state;
     },
 
@@ -292,6 +348,7 @@
     save: function () {
       try {
         localStorage.setItem(SAVE_KEY, this.serialize());
+        if (window.GameSaves) window.GameSaves.autosave(this.state);
         return true;
       } catch (e) { return false; }
     },

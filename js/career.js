@@ -11,6 +11,7 @@
   var T = window.TeamData;
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function divisionTier(div) { return { d3: 0, d2: 1, fcs: 2, fbs: 3 }[div || 'fbs']; }
 
   function fameLabel(fame) {
     if (fame >= 90) return 'Icon';
@@ -69,12 +70,14 @@
 
     profileScore: function (state) {
       var c = state.career || {};
+      var badge = window.GameStory ? window.GameStory.effects(state).profile : 0;
       return Math.round((c.coachingAbility || 50) * 0.42 + (c.nameRecognition || 25) * 0.33 +
-        (c.fame || 15) * 0.15 + (c.reputation || 50) * 0.10);
+        (c.fame || 15) * 0.15 + (c.reputation || 50) * 0.10 + badge);
     },
 
-    requiredProfile: function (prestige) {
-      return Math.round(12 + prestige * 7.2);
+    requiredProfile: function (prestige, div) {
+      var adjustment = { d3: -22, d2: -14, fcs: -7, fbs: 0 }[div || 'fbs'] || 0;
+      return Math.max(8, Math.round(12 + prestige * 7.2 + adjustment));
     },
 
     progressSeason: function (state, summary) {
@@ -85,6 +88,7 @@
       var over = wins - expected;
       var xp = 180 + wins * 28 + Math.max(0, over) * 45 +
         (summary.wonConf ? 350 : 0) + (summary.madePlayoff ? 300 : 0) + (summary.wonNatl ? 900 : 0);
+      if (window.GameDifficulty) xp = Math.round(xp * (window.GameDifficulty.get(state).progression || 1));
       c.coachXp = (c.coachXp || 0) + xp;
       var oldLevel = c.coachLevel || 1;
       c.coachLevel = clamp(1 + Math.floor(c.coachXp / 1000), 1, 20);
@@ -107,6 +111,7 @@
     initContract: function (state) {
       var team = T.get(state.team.id) || { prestige: 5 };
       var sal = salaryFor(team.prestige, state.career.reputation);
+      if (state.career.role && state.career.role !== 'headCoach') sal = Math.max(0.15, Math.round(sal * 0.28 * 10) / 10);
       var years = 4 + Math.round((team.prestige) / 4); // 4-6
       state.contract = { salary: sal, years: years, yearsLeft: years, buyout: Math.round(sal * years * 0.5 * 10) / 10 };
       return state.contract;
@@ -155,14 +160,16 @@
       var ceil = clamp(cur.prestige + Math.round(interest / 14), cur.prestige, 10);
       var floor = Math.max(cur.prestige, cur.prestige >= 8 ? 8 : cur.prestige); // offers are upgrades (or lateral blue-blood)
 
-      var pool = T.byDivision(cur.div || 'fbs').filter(function (t) {
-        var required = GameCareer.requiredProfile(t.prestige);
-        return t.id !== state.team.id && t.prestige >= floor && t.prestige <= ceil &&
-          t.prestige > cur.prestige - 1 && profile >= required;
+      var curDiv = cur.div || 'fbs', curTier = divisionTier(curDiv);
+      var pool = T.all().filter(function (t) {
+        var tier = divisionTier(t.div), nextDivision = tier === curTier + 1;
+        var sameDivision = tier === curTier && t.prestige >= floor && t.prestige <= ceil && t.prestige > cur.prestige - 1;
+        var required = GameCareer.requiredProfile(t.prestige, t.div);
+        return t.id !== state.team.id && (sameDivision || nextDivision) && profile >= required;
       });
       // Prefer bigger jobs; shuffle within.
       for (var i = pool.length - 1; i > 0; i--) { var j = Math.floor(rng() * (i + 1)); var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp; }
-      pool.sort(function (a, b) { return b.prestige - a.prestige; });
+      pool.sort(function (a, b) { return divisionTier(b.div) - divisionTier(a.div) || b.prestige - a.prestige; });
 
       var n = clamp(Math.round(interest / 22), 0, 4);
       var offers = pool.slice(0, n).map(function (t) {
@@ -170,7 +177,8 @@
         var sal = salaryFor(t.prestige, rep);
         return {
           teamId: t.id, prestige: t.prestige, conf: t.conf,
-          requiredProfile: GameCareer.requiredProfile(t.prestige), profileScore: profile,
+          role: 'headCoach',
+          requiredProfile: GameCareer.requiredProfile(t.prestige, t.div), profileScore: profile,
           salary: sal, years: years, buyout: Math.round(sal * years * 0.5 * 10) / 10,
           pitch: GameCareer.pitch(t, cur)
         };
@@ -180,6 +188,7 @@
     },
 
     pitch: function (t, cur) {
+      if (divisionTier(t.div) > divisionTier(cur.div)) return 'A promotion to ' + String(t.div).toUpperCase() + ' football and a larger stage.';
       if (t.prestige >= 9) return 'A blue-blood job — a chance to chase national titles.';
       if (t.prestige - cur.prestige >= 3) return 'A major step up in resources and expectations.';
       if (t.prestige >= 7) return 'A prestige program ready to win now.';
@@ -204,6 +213,7 @@
       var team = T.get(offer.teamId);
       state.jobOffers = [];
       E.changeJob(team);
+      state.career.role = offer.role || 'headCoach';
       state.contract = { salary: offer.salary, years: offer.years, yearsLeft: offer.years, buyout: offer.buyout };
       return state;
     },
