@@ -186,11 +186,11 @@ function serve() {
   ok(teamCount > 100, 'team select lists many teams (got ' + teamCount + ')');
 
   // Filter by search then pick a specific team
-  await page.fill('.input[type="search"]', 'Oregon');
+  await page.fill('.input[type="search"]', 'FIU');
   await page.waitForTimeout(60);
   const filtered = await page.evaluate(() => document.querySelectorAll('.team-card').length);
   ok(filtered >= 1 && filtered < 10, 'search filters team list (got ' + filtered + ')');
-  await page.click('.team-card:has-text("Oregon Ducks"), .team-card:has-text("Oregon")');
+  await page.click('.team-card:has-text("FIU")');
   await page.click('button:has-text("Next: Choose Coach")');
 
   // Coach select — real tab
@@ -217,10 +217,10 @@ function serve() {
     stateTeam: window.GameEngine.state.team.id,
     saved: window.GameEngine.hasSave()
   }));
-  ok(/Oregon/.test(hq.team), 'HQ shows chosen team (' + hq.team + ')');
+  ok(/FIU/.test(hq.team), 'HQ shows chosen team (' + hq.team + ')');
   ok(/Riley Vance/.test(hq.coach), 'HQ shows created coach (' + hq.coach + ')');
   eq(hq.stateCoach, 'Coach Riley Vance', 'state has created coach');
-  eq(hq.stateTeam, 'oregon', 'state has chosen team');
+  eq(hq.stateTeam, 'fiu', 'state has chosen team');
   ok(hq.saved, 'career auto-saved to localStorage');
 
   // Reload -> Continue restores HQ
@@ -230,7 +230,7 @@ function serve() {
   await page.click('button:has-text("Continue Career")');
   await page.waitForSelector('.hq');
   const restored = await page.evaluate(() => window.GameEngine.state.team.id + '|' + window.GameEngine.state.coach.name);
-  eq(restored, 'oregon|Coach Riley Vance', 'reload + Continue restores career');
+  eq(restored, 'fiu|Coach Riley Vance', 'reload + Continue restores career');
 
   // Screenshot the HQ for the report.
   fs.mkdirSync(path.join(ROOT, 'tests/artifacts'), { recursive: true });
@@ -469,6 +469,7 @@ function serve() {
     const rr = P.rosterRatings(E.state);
     out.rrValid = rr.overall >= 40 && rr.overall <= 99 && rr.off >= 40 && rr.def >= 40;
     out.boardSize = E.state.recruiting.board.length;
+    out.recruitIdentities = E.state.recruiting.board.every(p => p.name && p.hometown && p.state && p.highSchool);
     S.start(E.state);
     out.playerRatingFromRoster = E.state.season.league['oregon'].rating;
 
@@ -520,6 +521,7 @@ function serve() {
   ok(pg2.rosterSize >= 40, 'career starts with a full roster (' + pg2.rosterSize + ')');
   ok(pg2.rrValid, 'roster ratings are in range');
   ok(pg2.boardSize > 30, 'recruiting board is generated (' + pg2.boardSize + ')');
+  ok(pg2.recruitIdentities, 'recruits have persistent fictional names, hometowns, and high schools');
   ok(pg2.playerRatingFromRoster >= 40 && pg2.playerRatingFromRoster <= 99, 'player season rating is roster-driven');
   ok(pg2.gotPoints, 'recruiting points accrue weekly');
   ok(pg2.commits >= 1, 'the player lands commits over a season (' + pg2.commits + ')');
@@ -753,6 +755,11 @@ function serve() {
     out.careerKept = E.state.career.wins === winsBefore;
     out.firedReset = E.state.integrity.fired === false;
     out.newRoster = E.state.roster.length > 0;
+    E.newCareer({ id: 'risk', name: 'Risk Taker', source: 'custom', ratings: { recruiting: 70, offense: 70, defense: 70, development: 70, discipline: 60, motivation: 70, media: 70 } }, T.get('fiu'));
+    E.state.integrity.riskyThisSeason = 2; E.state.integrity.heat = 0;
+    const recognitionBeforeEscape = E.state.career.nameRecognition;
+    const escape = Sc.endSeasonReview(E.state, { wins: 8, losses: 4, wonConf: false, wonNatl: false });
+    out.escapeRewarded = escape.escaped && E.state.career.nameRecognition > recognitionBeforeEscape && escape.payoff.fame > 0;
     return out;
   });
   ok(sc.cheaterTookRisks, 'temptation events fire and can be taken');
@@ -768,6 +775,7 @@ function serve() {
   ok(sc.careerKept, 'changeJob keeps career win totals');
   ok(sc.firedReset, 'changeJob clears the fired flag');
   ok(sc.newRoster, 'changeJob builds a fresh roster');
+  ok(sc.escapeRewarded, 'getting away with risky choices awards recognition and fame');
 
   group('Save backfill: pre-wave-6 save gains integrity');
   const bf4 = await page.evaluate(() => {
@@ -868,6 +876,8 @@ function serve() {
       ratings: { recruiting: 90, offense: 88, defense: 86, development: 88, discipline: 80, motivation: 88, media: 74 } }, T.get('fiu'));
     E.state.seed = 777; // deterministic climb
     out.startPrestige = (T.get('fiu')).prestige;
+    out.customUnknown = E.state.career.nameRecognition === 10 && E.state.career.fame === 5;
+    out.customProfile = C.profileScore(E.state);
     out.startSalary = E.state.contract.salary;
     out.hasContract = E.state.contract.years > 0;
     let moves = 0, walletGrew = false;
@@ -891,15 +901,23 @@ function serve() {
     out.walletGrew = walletGrew;
     out.wallet = E.state.career.wallet;
     out.repTravelled = E.state.career.reputation > 55;
+    out.progressed = E.state.career.coachXp > 0 && E.state.career.coachLevel > 1 && E.state.career.nameRecognition > 10;
+
+    E.newCareer({ id: 'known', name: 'Known Coach', source: 'real', ratings: { recruiting: 84, offense: 84, defense: 84, development: 84, discipline: 84, motivation: 84, media: 88 } }, T.get('oregon'));
+    out.realEstablished = E.state.career.nameRecognition >= 60 && E.state.career.fame >= 50 && C.profileScore(E.state) > out.customProfile;
 
     // Underperformance draws no interest; overperformance does (offer logic).
     E.newCareer({ id: 'c2', name: 'Steady', source: 'custom',
       ratings: { recruiting: 60, offense: 60, defense: 60, development: 60, discipline: 60, motivation: 60, media: 60 } }, T.get('oregonst'));
     out.badOffers = C.generateOffers(E.state, { wins: 3, losses: 9, wonConf: false, wonNatl: false }).length;
+    E.state.career.coachingAbility = 90; E.state.career.nameRecognition = 90; E.state.career.fame = 80; E.state.career.reputation = 85;
     out.goodOffers = C.generateOffers(E.state, { wins: 12, losses: 1, wonConf: true, wonNatl: false }).length;
     return out;
   });
   ok(car.hasContract, 'a career starts with a contract');
+  ok(car.customUnknown, 'created coaches begin unknown and must climb');
+  ok(car.realEstablished, 'current coaches begin with established recognition and fame');
+  ok(car.progressed, 'season results award coach XP, levels, and recognition');
   ok(car.startSalary > 0, 'the contract has a salary ($' + car.startSalary + 'M)');
   ok(car.moves >= 2, 'an elite coach climbs via the carousel (' + car.moves + ' moves)');
   ok(car.endPrestige > car.startPrestige, 'the climb reaches a bigger program (' + car.startPrestige + '→' + car.endPrestige + ')');

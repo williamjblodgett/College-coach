@@ -95,6 +95,11 @@
         natTitles: 0,
         jobs: [],                 // [{teamId, startYear, endYear, wins, losses}]
         reputation: 50,           // portable prestige, 0-100
+        coachingAbility: 50,      // earned game-management/development mastery
+        nameRecognition: 25,      // how widely athletic departments know the coach
+        fame: 15,                 // national profile with fans, media, and boosters
+        coachXp: 0,
+        coachLevel: 1,
         legacyPoints: 0,
         wallet: 0,                // personal money ($M) accumulated from salary (wave 7)
         spent: 0,                 // lifetime personal spending ($M)
@@ -205,8 +210,33 @@
         s.career.jobs = [{
           teamId: team.id, startYear: s.career.year, endYear: null, wins: 0, losses: 0
         }];
-        // Seed reputation off program prestige a touch so bigger jobs feel bigger.
-        s.career.reputation = Math.round(45 + (team.prestige || 5) * 1.2);
+        var source = s.coach.source || 'custom';
+        var ratings = s.coach.ratings || {};
+        var avg = 0, count = 0;
+        Object.keys(ratings).forEach(function (key) { avg += ratings[key] || 0; count++; });
+        avg = count ? avg / count : 50;
+        if (source === 'custom') {
+          // Created coaches are unknown first-time hires who must climb.
+          s.career.reputation = 30;
+          s.career.coachingAbility = Math.max(35, Math.min(55, Math.round(avg - 10)));
+          s.career.nameRecognition = 10;
+          s.career.fame = 5;
+        } else if (source === 'legend') {
+          s.career.reputation = 92;
+          s.career.coachingAbility = Math.max(88, Math.round(avg));
+          s.career.nameRecognition = 98;
+          s.career.fame = 98;
+          s.career.coachLevel = 10;
+          s.career.coachXp = 9000;
+        } else {
+          // Current coaches retain a profile appropriate to their established career.
+          s.career.reputation = Math.max(62, Math.round(avg - 8));
+          s.career.coachingAbility = Math.max(65, Math.round(avg));
+          s.career.nameRecognition = Math.max(60, Math.round((avg + (ratings.media || 70)) / 2));
+          s.career.fame = Math.max(50, Math.round((s.career.nameRecognition + (ratings.media || 70)) / 2));
+          s.career.coachLevel = Math.max(5, Math.round((avg - 45) / 7));
+          s.career.coachXp = (s.career.coachLevel - 1) * 1000;
+        }
       }
       s.recruiting.classYear = s.career.year + 1;
       s.screen = 'hq';

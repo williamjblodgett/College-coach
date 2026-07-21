@@ -313,6 +313,12 @@
         btn('Start Career  🏈', 'primary', function () {
           if (!pick.coach) { alert('Choose or create a coach first.'); return; }
           if (!pick.coach.name || !pick.coach.name.trim()) { alert('Give your coach a name.'); return; }
+          if (pick.coach.source === 'custom' && pick.team && pick.team.prestige > 3) {
+            alert('Created coaches begin as unknowns. Choose a prestige 1-3 program and earn bigger opportunities.');
+            pick.startBottom = true;
+            renderTeamSelect();
+            return;
+          }
           E.newCareer(pick.coach, pick.team);
           E.state.startMode = pick.startBottom ? 'bottom' : 'established';
           E.state.settings.scandalIntensity = pick.scandalIntensity || 'realistic';
@@ -512,6 +518,9 @@
 
     var stats = el('div', { class: 'stat-grid' }, [
       stat('Roster OVR', power, rr ? ('OFF ' + rr.off + ' · DEF ' + rr.def) : 'prestige'),
+      stat('Coach Level', s.career.coachLevel, 'ability ' + s.career.coachingAbility),
+      stat('Recognition', s.career.nameRecognition, 'job market'),
+      stat('Fame', s.career.fame, window.GameCareer ? window.GameCareer.fameLabel(s.career.fame) : 'career'),
       stat('Reputation', s.career.reputation, 'career'),
       stat('Record', s.career.wins + '–' + s.career.losses, 'all-time'),
       stat('NIL', s.program.nilLevel, 'level'),
@@ -1011,7 +1020,10 @@
           el('span', { class: 'br-rank', text: '#' + p.rank }),
           el('span', { class: 'stars s' + p.stars, text: '★'.repeat(p.stars) }),
           el('span', { class: 'br-pos', text: p.pos }),
-          el('span', { class: 'br-name', text: p.name }),
+          el('span', { class: 'br-name' }, [
+            el('span', { text: p.name }),
+            el('span', { class: 'br-home muted', text: p.hometown ? (p.hometown + ', ' + p.state + ' / ' + p.highSchool) : 'Fictional prospect' })
+          ]),
           el('span', { class: 'br-ovr', text: p.proj }),
           el('span', { class: 'br-lean' }, [el('span', { class: 'br-lean-fill', style: 'width:' + leanPct + '%' })]),
           rec.signed ? null : el('button', {
@@ -1494,10 +1506,12 @@
     var cur = T.get(s.team.id) || { prestige: 5, name: s.team.name, nick: '' };
     var offers = s.jobOffers || [];
     var contract = s.contract || {};
+    var profile = C.profileScore(s);
 
     var stayCard = el('div', { class: 'carousel-current' }, [
       el('div', { class: 'cc-eyebrow', text: 'YOUR JOB' }),
       el('div', { class: 'cc-team' }, [teamBadge(cur, 36), el('span', { text: cur.name + ' ' + cur.nick })]),
+      el('div', { class: 'cc-contract', text: 'Candidate profile ' + profile + ' / Level ' + s.career.coachLevel + ' / ' + C.fameLabel(s.career.fame) }),
       el('div', { class: 'cc-contract', text: '$' + contract.salary + 'M/yr · ' + (contract.yearsLeft > 0 ? contract.yearsLeft + ' yrs left' : 'contract expiring') }),
       btn('Stay at ' + cur.name + '  →', 'primary big', function () {
         C.stay(s, lastWins); s.screen = 'season'; seasonTab = 'week'; lastWeekResult = null; E.save(); renderSeason();
@@ -1511,7 +1525,7 @@
         el('div', { class: 'co-body' }, [
           el('div', { class: 'card-title', text: t.name + ' ' + t.nick }),
           el('div', { class: 'card-sub', text: t.conf + ' · prestige ' + t.prestige + '/10 · $' + o.salary + 'M/yr' }),
-          el('div', { class: 'co-pitch muted', text: o.pitch })
+          el('div', { class: 'co-pitch muted', text: o.pitch + ' Candidate threshold: ' + (o.requiredProfile || C.requiredProfile(t.prestige)) + '.' })
         ]),
         btn('Take Job', '', function () {
           if (!confirm('Leave ' + cur.name + ' for ' + t.name + '? Your recruits and staff stay behind.')) return;

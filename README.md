@@ -64,8 +64,8 @@ npm test           # node tests/run.js
 6. ✅ **Scandal / NCAA violations** — a risk-vs-reward compliance system (now with an Off/Light/Realistic/Chaotic intensity setting): temptation events build hidden heat that can trigger investigations, sanctions (probation, scholarship losses, bowl bans, show-cause), AD hot seat, and firing — all consequence-focused
 7. ✅ **Job carousel / dynasty arc** — contracts + salary + a personal wallet, end-of-season offers from bigger programs seeded by record/prestige/reputation, start-from-the-bottom, and a coach store to spend your salary
 8. ✅ **Championship & bowl cutscene** — trophy presentation with team-colored confetti + career milestones
-9–11. Data tiers: FCS → D-II → D-III (planned)
-9–11. Data tiers: FCS → D-II → D-III
+9. ✅ **Coach progression & notoriety** — coaching XP/levels, ability, name recognition, fame tiers, profile-gated job opportunities, unknown create-a-coach starts, explicit scandal payoffs, and richer fictional recruit identities
+10–12. Data tiers: FCS → D-II → D-III (planned)
 
 ## License / assets
 

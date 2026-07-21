@@ -286,6 +286,7 @@ h1, h2, h3 { margin: 0 0 6px; line-height: 1.15; }
 .br-ovr { font-weight: 800; text-align: right; }
 .br-lean { height: 8px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
 .br-lean-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+.br-home { display: block; font-size: 10px; line-height: 1.2; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
 .br-btn { padding: 6px 10px; font-size: 12px; }
 .br-btn[disabled] { opacity: .4; cursor: not-allowed; }
 

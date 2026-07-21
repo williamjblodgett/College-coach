@@ -6,6 +6,14 @@ const path = require('path');
 function findChromium() {
   const envExe = process.env.PW_CHROMIUM;
   if (envExe && fs.existsSync(envExe)) return envExe;
+  const installed = process.platform === 'win32' ? [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+  ] : [];
+  const systemBrowser = installed.find((fp) => fs.existsSync(fp));
+  if (systemBrowser) return systemBrowser;
   const roots = ['/opt/pw-browsers'];
   const candidates = [];
   for (const root of roots) {
@@ -24,7 +32,7 @@ function findChromium() {
   }
   // Prefer full chrome over headless_shell for consistent rendering.
   candidates.sort((a, b) => (a.includes('headless_shell') ? 1 : 0) - (b.includes('headless_shell') ? 1 : 0));
-  if (!candidates.length) throw new Error('No chromium found under /opt/pw-browsers');
+  if (!candidates.length) throw new Error('No compatible Chromium browser found. Set PW_CHROMIUM to its executable path.');
   return candidates[0];
 }
 

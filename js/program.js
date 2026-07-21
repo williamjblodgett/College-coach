@@ -174,6 +174,7 @@
       size = size || 64;
       var board = [];
       for (var i = 0; i < size; i++) {
+        var identity = N.makeIdentity ? N.makeIdentity(rng) : { name: N.make(rng), hometown: '', state: '', highSchool: '' };
         var pos = pick(rng, POS_PLAN)[0];
         // National pool: independent of your prestige, skews to 3-star. Blue-chip
         // (4-5 star) prospects are deliberately scarce.
@@ -186,7 +187,8 @@
         // chips start well short of a commitment for everyone.
         var lean = clamp(6 + prestige * 1.7 - (stars - 3) * 10 + (rng() * 8 - 4), 1, 48);
         board.push({
-          id: uid('r'), name: N.make(rng), pos: pos, stars: stars,
+          id: uid('r'), name: identity.name, hometown: identity.hometown, state: identity.state,
+          highSchool: identity.highSchool, pos: pos, stars: stars,
           proj: proj, pot: pot, dev: dev.id,
           lean: Math.round(lean), status: 'open', heat: 0
         });
@@ -257,7 +259,8 @@
     signingDay: function (state) {
       var rec = state.recruiting;
       var signed = GameProgram.commitList(state).map(function (p) {
-        return { id: p.id, name: p.name, pos: p.pos, stars: p.stars, proj: p.proj, pot: p.pot, dev: p.dev };
+        return { id: p.id, name: p.name, hometown: p.hometown, state: p.state, highSchool: p.highSchool,
+          pos: p.pos, stars: p.stars, proj: p.proj, pot: p.pot, dev: p.dev };
       });
       rec.signed = true;
       state.program.signedClass = signed;
@@ -362,7 +365,8 @@
       });
       // Add signed recruits as freshmen.
       (state.program.signedClass || []).forEach(function (r) {
-        kept.push({ id: uid('p'), name: r.name, pos: r.pos, group: POS_GROUP[r.pos], year: 'FR', stars: r.stars, ovr: clamp(r.proj - 3, 40, 99), pot: r.pot, dev: r.dev });
+        kept.push({ id: uid('p'), name: r.name, hometown: r.hometown, state: r.state, highSchool: r.highSchool,
+          pos: r.pos, group: POS_GROUP[r.pos], year: 'FR', stars: r.stars, ovr: clamp(r.proj - 3, 40, 99), pot: r.pot, dev: r.dev });
       });
       // Backfill thin positions with walk-ons so the depth chart is never empty.
       POS_PLAN.forEach(function (pl) {

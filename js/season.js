@@ -520,6 +520,9 @@
         postseasonBanned: !!s.postseason.playerBanned
       };
 
+      // Coaching progression is earned before the carousel evaluates candidates.
+      if (window.GameCareer) window.GameCareer.progressSeason(state, summary);
+
       // Compliance review: AD trust, investigation + verdict, sanctions, firing.
       if (window.GameScandal) {
         summary.verdict = window.GameScandal.endSeasonReview(state, summary);

@@ -239,6 +239,8 @@
       }
       if (fx.adTrust) { i.adTrust = clamp(i.adTrust + fx.adTrust, 0, 100); out.adTrust = fx.adTrust; }
       if (fx.reputation) { state.career.reputation = clamp(state.career.reputation + fx.reputation, 0, 100); out.reputation = fx.reputation; }
+      if (fx.recognition) { state.career.nameRecognition = clamp(state.career.nameRecognition + fx.recognition, 0, 100); out.recognition = fx.recognition; }
+      if (fx.fame) { state.career.fame = clamp(state.career.fame + fx.fame, 0, 100); out.fame = fx.fame; }
       if (fx.recruitPoints && state.recruiting) { state.recruiting.points += fx.recruitPoints; out.recruitPoints = fx.recruitPoints; }
       if (fx.nil && state.program) { state.program.nilLevel = clamp(state.program.nilLevel + fx.nil, 0, 100); out.nil = fx.nil; }
       if (fx.severe) i._severeFlag = true;
@@ -275,7 +277,8 @@
       // Investigation roll.
       var invMult = window.GameCareer ? window.GameCareer.storeEffects(state).invMult : 1; // private investigator
       var invChance = clamp(((i.heat - 25) / 120 + (cohesion < 55 ? 0.06 : 0) + (i._severeFlag ? 0.35 : 0)) * invMult, 0, 0.9);
-      var verdict = { year: state.career.year, investigated: false, severity: 'none', sanctions: [], fired: false, heatBefore: i.heat };
+      var risky = i.riskyThisSeason || 0;
+      var verdict = { year: state.career.year, investigated: false, severity: 'none', sanctions: [], fired: false, heatBefore: i.heat, escaped: false };
 
       if (rng() < invChance) {
         verdict.investigated = true;
@@ -293,6 +296,14 @@
       } else if (i._severeFlag) {
         // A buried severe matter that didn't surface this year still simmers.
         verdict.severity = 'simmering';
+      } else if (risky > 0) {
+        // The event reward already landed. Escaping scrutiny adds notoriety,
+        // making the risk/reward bargain explicit to the player.
+        verdict.escaped = true;
+        verdict.payoff = { recognition: Math.min(6, risky * 2), fame: Math.min(4, risky) };
+        state.career.nameRecognition = clamp(state.career.nameRecognition + verdict.payoff.recognition, 0, 100);
+        state.career.fame = clamp(state.career.fame + verdict.payoff.fame, 0, 100);
+        verdict.sanctions.push('No case opened - the risky moves paid off this season.');
       }
 
       // AD patience: sustained losing or a wrecked reputation gets you fired
@@ -323,6 +334,7 @@
       if (severity === 'secondary') {
         i.probation = Math.max(i.probation, 1);
         state.career.reputation = clamp(state.career.reputation - 3, 0, 100);
+        state.career.nameRecognition = clamp(state.career.nameRecognition - 2, 0, 100);
         verdict.sanctions.push('Secondary violations — 1 year of probation.');
         i.heat = clamp(i.heat - 25, 0, 100);
         return;
@@ -333,6 +345,8 @@
         i.bowlBanUntil = Math.max(i.bowlBanUntil, year + 1);
         i.adTrust = clamp(i.adTrust - 15, 0, 100);
         state.career.reputation = clamp(state.career.reputation - 10, 0, 100);
+        state.career.nameRecognition = clamp(state.career.nameRecognition - 10, 0, 100);
+        state.career.fame = clamp(state.career.fame - 7, 0, 100);
         verdict.sanctions.push('Scholarship reductions (2 years).');
         verdict.sanctions.push('Postseason ban next season.');
         verdict.sanctions.push('2 years probation.');
@@ -345,6 +359,9 @@
       i.bowlBanUntil = Math.max(i.bowlBanUntil, year + 2);
       i.scholarshipPenalty = Math.max(i.scholarshipPenalty, 3);
       state.career.reputation = clamp(state.career.reputation - 25, 0, 100);
+      state.career.nameRecognition = clamp(state.career.nameRecognition - 25, 0, 100);
+      state.career.fame = clamp(state.career.fame - 20, 0, 100);
+      state.career.coachingAbility = clamp(state.career.coachingAbility - 4, 20, 99);
       verdict.sanctions.push('SHOW-CAUSE penalty issued.');
       verdict.sanctions.push('Multi-year postseason ban and scholarship losses.');
       GameScandal.dismiss(state, 'showcause');

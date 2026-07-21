@@ -12,6 +12,15 @@
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
+  function fameLabel(fame) {
+    if (fame >= 90) return 'Icon';
+    if (fame >= 75) return 'National Star';
+    if (fame >= 55) return 'Household Name';
+    if (fame >= 35) return 'Rising Name';
+    if (fame >= 15) return 'Regional Coach';
+    return 'Unknown';
+  }
+
   // ---- the store: a wide catalog you buy with accrued salary --------------
   // effect keys — ongoing: recruiting, development, jobInterest, walletInterest,
   //   heatMult, invMult; immediate (applied once at purchase): reputation,
@@ -56,6 +65,43 @@
 
   var GameCareer = {
     salaryFor: salaryFor,
+    fameLabel: fameLabel,
+
+    profileScore: function (state) {
+      var c = state.career || {};
+      return Math.round((c.coachingAbility || 50) * 0.42 + (c.nameRecognition || 25) * 0.33 +
+        (c.fame || 15) * 0.15 + (c.reputation || 50) * 0.10);
+    },
+
+    requiredProfile: function (prestige) {
+      return Math.round(12 + prestige * 7.2);
+    },
+
+    progressSeason: function (state, summary) {
+      var c = state.career;
+      var team = T.get(state.team.id) || { prestige: 5 };
+      var wins = summary.wins || 0;
+      var expected = clamp(Math.round(team.prestige * 0.9 + 1), 3, 11);
+      var over = wins - expected;
+      var xp = 180 + wins * 28 + Math.max(0, over) * 45 +
+        (summary.wonConf ? 350 : 0) + (summary.madePlayoff ? 300 : 0) + (summary.wonNatl ? 900 : 0);
+      c.coachXp = (c.coachXp || 0) + xp;
+      var oldLevel = c.coachLevel || 1;
+      c.coachLevel = clamp(1 + Math.floor(c.coachXp / 1000), 1, 20);
+      var levels = c.coachLevel - oldLevel;
+      c.coachingAbility = clamp((c.coachingAbility || 50) + Math.max(0, levels) + (over >= 4 ? 1 : 0), 20, 99);
+      c.nameRecognition = clamp((c.nameRecognition || 10) + Math.max(-3, over) +
+        (summary.wonConf ? 6 : 0) + (summary.madePlayoff ? 7 : 0) + (summary.wonNatl ? 12 : 0), 0, 100);
+      c.fame = clamp((c.fame || 5) + Math.max(-2, Math.round(over / 2)) +
+        (summary.wonConf ? 4 : 0) + (summary.madePlayoff ? 6 : 0) + (summary.wonNatl ? 15 : 0), 0, 100);
+      summary.coachXp = xp;
+      summary.coachLevel = c.coachLevel;
+      summary.coachingAbility = c.coachingAbility;
+      summary.nameRecognition = c.nameRecognition;
+      summary.fame = c.fame;
+      summary.fameLabel = fameLabel(c.fame);
+      return summary;
+    },
 
     // Set the contract for the current job.
     initContract: function (state) {
@@ -93,6 +139,7 @@
     generateOffers: function (state, summary) {
       var cur = T.get(state.team.id) || { prestige: 5 };
       var rep = state.career.reputation;
+      var profile = GameCareer.profileScore(state);
       var wins = summary ? summary.wins : 6;
       var expected = clamp(Math.round(cur.prestige * 0.9 + 1), 3, 11);
       var over = wins - expected;
@@ -100,7 +147,7 @@
 
       // Interest is a function of reputation + overperformance + titles (a
       // super-agent / networking raise your market profile).
-      var interest = (rep - 50) * 0.9 + over * 6 + (summary && summary.wonConf ? 10 : 0) + (summary && summary.wonNatl ? 22 : 0)
+      var interest = (rep - 50) * 0.45 + (profile - 35) * 0.75 + over * 6 + (summary && summary.wonConf ? 10 : 0) + (summary && summary.wonNatl ? 22 : 0)
         + GameCareer.storeEffects(state).jobInterest;
       if (interest < 8) return [];
 
@@ -109,7 +156,9 @@
       var floor = Math.max(cur.prestige, cur.prestige >= 8 ? 8 : cur.prestige); // offers are upgrades (or lateral blue-blood)
 
       var pool = T.byDivision(cur.div || 'fbs').filter(function (t) {
-        return t.id !== state.team.id && t.prestige >= floor && t.prestige <= ceil && t.prestige > cur.prestige - 1;
+        var required = GameCareer.requiredProfile(t.prestige);
+        return t.id !== state.team.id && t.prestige >= floor && t.prestige <= ceil &&
+          t.prestige > cur.prestige - 1 && profile >= required;
       });
       // Prefer bigger jobs; shuffle within.
       for (var i = pool.length - 1; i > 0; i--) { var j = Math.floor(rng() * (i + 1)); var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp; }
@@ -121,6 +170,7 @@
         var sal = salaryFor(t.prestige, rep);
         return {
           teamId: t.id, prestige: t.prestige, conf: t.conf,
+          requiredProfile: GameCareer.requiredProfile(t.prestige), profileScore: profile,
           salary: sal, years: years, buyout: Math.round(sal * years * 0.5 * 10) / 10,
           pitch: GameCareer.pitch(t, cur)
         };
