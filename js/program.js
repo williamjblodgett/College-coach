@@ -426,6 +426,7 @@
       }
       if (window.GameStaff) window.GameStaff.ensureStaff(state); // wave 5 backfill
       if (window.GameScandal) window.GameScandal.ensureIntegrity(state); // wave 6 backfill
+      if (window.GameCareer) window.GameCareer.ensureContract(state); // wave 7 backfill
       return state;
     }
   };

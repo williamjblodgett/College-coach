@@ -16,6 +16,7 @@ var CORE = [
   './js/staff.js',
   './js/scandal.js',
   './js/program.js',
+  './js/career.js',
   './js/season.js',
   './js/sim.js',
   './js/ui.js',

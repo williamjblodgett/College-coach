@@ -528,6 +528,10 @@
         summary.adTrust = state.integrity.adTrust;
         summary.reputation = state.career.reputation; // may have changed from sanctions
       }
+      // Job carousel: offers from bigger programs (only if not fired).
+      if (window.GameCareer && !(summary.fired)) {
+        summary.offers = window.GameCareer.generateOffers(state, summary);
+      }
       state.history.push(summary);
 
       // Hand off to the offseason (signing day → portal/budget → rollover).

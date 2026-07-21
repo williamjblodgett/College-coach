@@ -95,8 +95,15 @@
         natTitles: 0,
         jobs: [],                 // [{teamId, startYear, endYear, wins, losses}]
         reputation: 50,           // portable prestige, 0-100
-        legacyPoints: 0
+        legacyPoints: 0,
+        wallet: 0,                // personal money ($M) accumulated from salary (wave 7)
+        spent: 0,                 // lifetime personal spending ($M)
+        purchases: []             // owned store items (wave 8)
       },
+      // Current coaching contract (wave 7).
+      contract: { salary: 0, years: 0, yearsLeft: 0, buyout: 0 },
+      jobOffers: [],              // transient end-of-season carousel offers
+      startMode: 'established',   // 'established' | 'bottom'
       // Current in-season state (season engine, wave 2).
       season: {
         started: false,
@@ -205,6 +212,7 @@
       this.state = normalize(s);
       // Generate the initial roster + recruiting board (wave 4).
       if (window.GameProgram && team) window.GameProgram.initProgram(this.state);
+      if (window.GameCareer && team) window.GameCareer.initContract(this.state);
       return this.state;
     },
 
@@ -230,6 +238,7 @@
       s.screen = 'hq';
       this.state = normalize(s);
       if (window.GameProgram) window.GameProgram.initProgram(this.state);
+      if (window.GameCareer) window.GameCareer.initContract(this.state);
       return this.state;
     },
 

@@ -152,7 +152,7 @@
   // ---- Screen: Team Select -------------------------------------------------
   function renderTeamSelect() {
     var confs = T.conferences('fbs');
-    var state = { conf: 'All', q: '' };
+    var state = { conf: 'All', q: '', bottom: pick.startBottom || false };
 
     var list = el('div', { class: 'grid team-grid' });
     var subtitle = el('p', { class: 'muted select-count' });
@@ -160,6 +160,7 @@
     function refresh() {
       list.innerHTML = '';
       var teams = T.byDivision('fbs').filter(function (t) {
+        if (state.bottom && t.prestige > 3) return false; // start-from-the-bottom
         if (state.conf !== 'All' && t.conf !== state.conf) return false;
         if (state.q) {
           var q = state.q.toLowerCase();
@@ -206,11 +207,22 @@
       ])
     ]);
 
+    var modeToggle = el('div', { class: 'mode-toggle' }, [
+      el('button', { class: 'chip' + (!state.bottom ? ' active' : ''), onclick: function () { state.bottom = false; pick.startBottom = false; refresh(); syncMode(); } }, ['🏛️ Established']),
+      el('button', { class: 'chip' + (state.bottom ? ' active' : ''), onclick: function () { state.bottom = true; pick.startBottom = true; refresh(); syncMode(); } }, ['🌱 Start from the Bottom'])
+    ]);
+    function syncMode() {
+      var chips = modeToggle.querySelectorAll('.chip');
+      chips[0].className = 'chip' + (!state.bottom ? ' active' : '');
+      chips[1].className = 'chip' + (state.bottom ? ' active' : '');
+    }
+
     var screen = el('div', { class: 'screen' }, [
       el('div', { class: 'screen-head' }, [
         el('h2', { text: 'Choose Your Program' }),
-        el('p', { class: 'muted', text: 'Step 1 of 2 — FBS (more divisions coming in later waves).' })
+        el('p', { class: 'muted', text: 'Pick a blue-blood and win now, or start at a bottom-tier program and climb the carousel.' })
       ]),
+      modeToggle,
       el('div', { class: 'toolbar' }, [confSel, search, subtitle]),
       list, footer
     ]);
@@ -302,6 +314,8 @@
           if (!pick.coach) { alert('Choose or create a coach first.'); return; }
           if (!pick.coach.name || !pick.coach.name.trim()) { alert('Give your coach a name.'); return; }
           E.newCareer(pick.coach, pick.team);
+          E.state.startMode = pick.startBottom ? 'bottom' : 'established';
+          if (pick.startBottom) E.state.career.reputation = Math.max(30, E.state.career.reputation - 8);
           E.save();
           renderHQ();
         })
@@ -566,8 +580,18 @@
       ]);
     }
 
+    var contractBar = null;
+    if (window.GameCareer) {
+      window.GameCareer.ensureContract(s);
+      contractBar = el('div', { class: 'contract-bar' }, [
+        el('span', { class: 'cb-item', text: '💼 $' + s.contract.salary + 'M/yr' }),
+        el('span', { class: 'cb-item', text: '📄 ' + s.contract.yearsLeft + ' yrs left' }),
+        el('span', { class: 'cb-item', text: '💰 Wallet $' + (s.career.wallet || 0).toFixed(1) + 'M' })
+      ]);
+    }
+
     var screen = el('div', { class: 'screen hq' }, [
-      hero, stats,
+      hero, stats, contractBar,
       el('div', { class: 'panel-grid' }, [coachPanel, rivalPanel]),
       compliancePanel, nextPanel
     ]);
@@ -1179,7 +1203,8 @@
           }))
         ]) : null,
         el('div', { class: 'btn-row', style: 'margin-top:16px' }, [
-          btn('🏈  Start ' + nextYear + ' Season  →', 'primary big', function () {
+          btn((window.GameCareer && window.GameCareer.hasOffers(s) ? '📞  Job Offers & Next Season  →' : '🏈  Start ' + nextYear + ' Season  →'), 'primary big', function () {
+            if (window.GameCareer) { renderCarousel(); return; }
             P.startNextSeason(s); s.screen = 'season'; seasonTab = 'week'; lastWeekResult = null; E.save(); renderSeason();
           }),
           btn('📋 Roster', 'ghost', function () { renderRoster('offseason'); }),
@@ -1223,6 +1248,52 @@
     }
 
     draw();
+  }
+
+  // ---- Job carousel (Wave 7) -----------------------------------------------
+  function renderCarousel() {
+    var s = E.state, C = window.GameCareer;
+    applyTheme(T.get(s.team.id));
+    var lastWins = s.history.length ? s.history[s.history.length - 1].wins : 6;
+    var cur = T.get(s.team.id) || { prestige: 5, name: s.team.name, nick: '' };
+    var offers = s.jobOffers || [];
+    var contract = s.contract || {};
+
+    var stayCard = el('div', { class: 'carousel-current' }, [
+      el('div', { class: 'cc-eyebrow', text: 'YOUR JOB' }),
+      el('div', { class: 'cc-team' }, [teamBadge(cur, 36), el('span', { text: cur.name + ' ' + cur.nick })]),
+      el('div', { class: 'cc-contract', text: '$' + contract.salary + 'M/yr · ' + (contract.yearsLeft > 0 ? contract.yearsLeft + ' yrs left' : 'contract expiring') }),
+      btn('Stay at ' + cur.name + '  →', 'primary big', function () {
+        C.stay(s, lastWins); s.screen = 'season'; seasonTab = 'week'; lastWeekResult = null; E.save(); renderSeason();
+      })
+    ]);
+
+    var offerEls = offers.map(function (o) {
+      var t = T.get(o.teamId);
+      return el('div', { class: 'offer-card carousel-offer' }, [
+        teamBadge(t, 40),
+        el('div', { class: 'co-body' }, [
+          el('div', { class: 'card-title', text: t.name + ' ' + t.nick }),
+          el('div', { class: 'card-sub', text: t.conf + ' · prestige ' + t.prestige + '/10 · $' + o.salary + 'M/yr' }),
+          el('div', { class: 'co-pitch muted', text: o.pitch })
+        ]),
+        btn('Take Job', '', function () {
+          if (!confirm('Leave ' + cur.name + ' for ' + t.name + '? Your recruits and staff stay behind.')) return;
+          C.acceptOffer(s, o); E.save(); toast('Welcome to ' + t.name + '!'); renderHQ();
+        })
+      ]);
+    });
+
+    var screen = el('div', { class: 'screen carousel-screen' }, [
+      el('div', { class: 'screen-head' }, [
+        el('h2', { text: '📞 The Coaching Carousel' }),
+        el('p', { class: 'muted', text: offers.length ? 'Bigger programs are calling. Climb the ladder — or build where you are.' : 'No new offers this year. Keep winning to draw interest.' })
+      ]),
+      stayCard,
+      offers.length ? el('h3', { class: 'sec-title', text: 'Offers on the Table' }) : null,
+      el('div', { class: 'offer-list' }, offerEls)
+    ]);
+    mount(screen);
   }
 
   // ---- Roster / depth chart (Wave 4) ---------------------------------------
@@ -1676,6 +1747,7 @@
     renderStaff: renderStaff,
     renderSigningDay: renderSigningDay,
     renderOffseason: renderOffseason,
+    renderCarousel: renderCarousel,
     renderFired: renderFired,
     teamBadge: teamBadge,
     toast: toast,

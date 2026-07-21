@@ -45,7 +45,15 @@
     C('mattcamp','Matt Campbell','real','Development','Culture-and-development builder at a hard job.',[80,82,82,88,84,84,80]),
     C('willie','Willie Fritz','real','Development','Program-fixer known for tough, efficient teams.',[78,80,80,86,84,80,76]),
     C('jamey','Jamey Chadwell','real','Offense','Creative option-offense innovator at the Group of Five.',[78,88,74,82,80,82,78]),
-    C('jasoncandle','Jason Candle','real','Development','Steady Group-of-Five program-builder.',[74,80,78,84,82,80,74])
+    C('jasoncandle','Jason Candle','real','Development','Steady Group-of-Five program-builder.',[74,80,78,84,82,80,74]),
+    C('lincolnriley','Lincoln Riley','real','Offense','Offensive savant and quarterback developer.',[89,95,74,84,78,82,86]),
+    C('mariocristobal','Mario Cristobal','real','Recruiter','Physical, elite-recruiting program-builder.',[92,78,82,84,84,86,82]),
+    C('brentvenables','Brent Venables','real','Defense','Fiery defensive mastermind.',[88,76,93,82,84,90,80]),
+    C('kylewhittingham','Kyle Whittingham','real','Defense','Tough, disciplined long-tenured winner.',[80,78,90,86,88,84,76]),
+    C('lukefickell','Luke Fickell','real','CEO','Program-builder who develops and wins.',[84,80,84,86,84,84,80]),
+    C('hughfreeze','Hugh Freeze','real','Offense','Creative offensive mind and sharp recruiter.',[86,90,74,80,72,82,84]),
+    C('mikeelko','Mike Elko','real','Defense','Defensive strategist turning around a big job.',[84,78,88,84,84,84,80]),
+    C('lanceleipold','Lance Leipold','real','Development','Master rebuilder and player-developer.',[80,82,80,90,86,84,78])
   ];
 
   // ---- Legends ----
