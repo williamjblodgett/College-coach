@@ -10,6 +10,8 @@
   --text: #eef2f8;
   --muted: #93a0b8;
   --accent: #ffb400;
+  --accent-dark: #ff8a00;
+  --accent-ink: #201400;   /* readable text on top of --accent */
   --accent-2: #16c98d;
   --danger: #ff5468;
   --team-primary: #c8102e;
@@ -47,8 +49,8 @@ h1, h2, h3 { margin: 0 0 6px; line-height: 1.15; }
 }
 .btn:hover { background: #27324a; }
 .btn:active { transform: translateY(1px); }
-.btn.primary { background: linear-gradient(135deg, var(--accent), #ff8a00); color: #201400; border-color: transparent; }
-.btn.primary:hover { filter: brightness(1.06); background: linear-gradient(135deg, var(--accent), #ff8a00); }
+.btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: var(--accent-ink); border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.08); }
 .btn.ghost { background: transparent; }
 .btn.big { padding: 15px 22px; font-size: 17px; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }

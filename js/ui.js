@@ -79,6 +79,36 @@
     var lum = (0.299*c[0] + 0.587*c[1] + 0.114*c[2]);
     return lum > 150 ? '#111' : '#fff';
   }
+  function lum(c) { return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; }
+  function toHex(c) { return '#' + c.map(function (v) { return ('0' + Math.max(0, Math.min(255, Math.round(v))).toString(16)).slice(-2); }).join(''); }
+  // Turn a (possibly dark) team color into a vibrant accent readable on the dark UI.
+  function vividAccent(hex) {
+    var c = hexToRgb(hex), guard = 0;
+    while (lum(c) < 135 && guard++ < 12) c = c.map(function (v) { return v * 1.22 + 26; });
+    // nudge saturation so navy/maroon don't wash to grey
+    var mx = Math.max(c[0], c[1], c[2]), mn = Math.min(c[0], c[1], c[2]);
+    if (mx - mn < 40) { /* low saturation — leave as a light neutral */ }
+    return toHex(c);
+  }
+  // Apply the hired team's colors across the whole UI (accent + surfaces).
+  function applyTheme(team) {
+    var root = document.documentElement;
+    if (!team || !team.colors) { resetTheme(); return; }
+    var primary = team.colors[0], secondary = team.colors[1];
+    // Pick whichever color makes the more vivid accent.
+    var a1 = vividAccent(primary), a2 = vividAccent(secondary);
+    var accent = lum(hexToRgb(a1)) >= lum(hexToRgb(a2)) - 25 ? a1 : a2;
+    root.style.setProperty('--accent', accent);
+    root.style.setProperty('--accent-dark', shade(accent, -34));
+    root.style.setProperty('--accent-ink', readable(accent));
+    root.style.setProperty('--team-primary', primary);
+    root.style.setProperty('--team-secondary', secondary);
+    document.querySelector('meta[name="theme-color"]') && document.querySelector('meta[name="theme-color"]').setAttribute('content', shade(primary, -40));
+  }
+  function resetTheme() {
+    var root = document.documentElement;
+    ['--accent', '--accent-dark', '--accent-ink'].forEach(function (v) { root.style.removeProperty(v); });
+  }
 
   function btn(label, cls, on) {
     return el('button', { class: 'btn ' + (cls || ''), onclick: on }, [label]);
@@ -86,6 +116,7 @@
 
   // ---- Screen: Title -------------------------------------------------------
   function renderTitle() {
+    resetTheme();
     pick = { team: null, coachTab: 'real', build: null };
     var hasSave = E.hasSave();
     var card = el('div', { class: 'screen title-screen' }, [
@@ -418,8 +449,7 @@
     var rr = window.GameProgram && s.roster.length ? window.GameProgram.rosterRatings(s) : null;
     var power = rr ? rr.overall : E.teamPower(team, coach);
 
-    document.documentElement.style.setProperty('--team-primary', team.colors[0]);
-    document.documentElement.style.setProperty('--team-secondary', team.colors[1]);
+    applyTheme(team);
 
     var hero = el('div', { class: 'hq-hero', style:
       'background:linear-gradient(135deg,' + team.colors[0] + ',' + shade(team.colors[0], -30) + ');' +
@@ -606,10 +636,7 @@
     s.screen = 'season';
 
     var team = T.get(s.team.id);
-    if (team) {
-      document.documentElement.style.setProperty('--team-primary', team.colors[0]);
-      document.documentElement.style.setProperty('--team-secondary', team.colors[1]);
-    }
+    if (team) applyTheme(team);
 
     var content = el('div', { class: 'season-content' });
     function pick(tab) { seasonTab = tab; draw(); }
@@ -1069,6 +1096,7 @@
   // ---- Signing Day cutscene (Wave 4) ---------------------------------------
   function renderSigningDay() {
     var s = E.state, P = window.GameProgram;
+    applyTheme(T.get(s.team.id));
     var signed = P.signingDay(s);
     E.save();
     var sum = P.classSummary(signed);
@@ -1117,6 +1145,7 @@
   // ---- Offseason hub (Wave 4): portal + NIL/facilities ---------------------
   function renderOffseason() {
     var s = E.state, P = window.GameProgram;
+    applyTheme(T.get(s.team.id));
     var nextYear = s.career.year + 1;
 
     function draw() {
@@ -1199,6 +1228,7 @@
   // ---- Roster / depth chart (Wave 4) ---------------------------------------
   function renderRoster(from) {
     var s = E.state, P = window.GameProgram;
+    applyTheme(T.get(s.team.id));
     P.ensureProgram(s);
     var rr = P.rosterRatings(s);
     var back = from === 'offseason' ? function () { renderOffseason(); }
@@ -1249,6 +1279,7 @@
   // ---- Staff / coaching cabinet (Wave 5) -----------------------------------
   function renderStaff(from) {
     var s = E.state, St = window.GameStaff;
+    applyTheme(T.get(s.team.id));
     St.ensureStaff(s);
     var back = from === 'offseason' ? function () { renderOffseason(); }
       : from === 'season' ? function () { renderSeason(); }
@@ -1360,6 +1391,7 @@
     var stakes = pg.rivalry ? '🔥 Rivalry Game' : (pg.conf ? (T.get(playerId).conf + ' Game') : 'Non-Conference');
     if (oppRankIdx >= 0 && oppRankIdx < 25) stakes += ' · vs #' + (oppRankIdx + 1);
 
+    applyTheme(T.get(playerId));
     var homeTeam = T.get(pg.home), venue = homeTeam.stadium + ' · ' + homeTeam.city + ', ' + homeTeam.st;
     var g = Sim.create({
       home: homeCfg, away: awayCfg, playerSide: playerSide,
