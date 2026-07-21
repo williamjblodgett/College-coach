@@ -359,6 +359,21 @@ h1, h2, h3 { margin: 0 0 6px; line-height: 1.15; }
 .si-buy[disabled] { opacity: .4; cursor: not-allowed; }
 .si-owned { color: var(--accent-2); font-weight: 800; font-size: 12px; white-space: nowrap; }
 
+/* ---- championship cutscene (wave 8) ---- */
+.champ-cutscene { position: relative; min-height: 78vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.confetti-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.cut-desk { position: relative; z-index: 2; text-align: center; padding: 24px; background: radial-gradient(120% 120% at 50% 0%, rgba(255,180,0,.12), rgba(11,14,20,.86)); border: 1px solid var(--accent); border-radius: 20px; max-width: 460px; width: 100%; box-shadow: 0 0 60px rgba(0,0,0,.5); animation: fade .4s ease; }
+.cut-eyebrow { font-size: 12px; font-weight: 900; letter-spacing: 2px; color: var(--accent); }
+.cut-trophy { font-size: 82px; filter: drop-shadow(0 6px 20px rgba(255,212,0,.6)); animation: trophyPop .6s cubic-bezier(.2,1.4,.4,1); }
+@keyframes trophyPop { from { transform: scale(0) rotate(-20deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.cut-desk .badge { margin: 6px auto; }
+.cut-team { font-size: 22px; font-weight: 800; margin-top: 6px; }
+.cut-title { font-size: clamp(26px, 8vw, 40px); font-weight: 900; letter-spacing: 1px; margin: 4px 0 8px;
+  background: linear-gradient(180deg, #fff, #ffd400); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.cut-score { color: var(--muted); font-weight: 700; font-size: 14px; }
+.cut-coach { display: inline-flex; align-items: center; gap: 8px; margin: 12px 0 6px; font-weight: 700; }
+.cut-milestone { color: var(--accent); font-weight: 700; font-size: 13.5px; margin-bottom: 16px; }
+
 /* ---- scandal intensity + settings ---- */
 .setup-scandals { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 84px; }
 .ss-label { font-weight: 700; font-size: 13px; color: var(--muted); }

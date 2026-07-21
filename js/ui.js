@@ -875,11 +875,17 @@
           return miniGame(g, { rank: rk, player: g.home === s.team.id || g.away === s.team.id });
         })));
       }
+      // Did the player win a trophy worth a ceremony?
+      var title = playerTitleResult(s);
+      var finishToSummary = function () {
+        var summary = Season.finish(s); E.save(); lastWeekResult = null; seasonTab = 'week';
+        renderSeasonSummary(summary);
+      };
       wrap.appendChild(el('div', { class: 'btn-row', style: 'margin-top:16px' }, [
-        btn('📜  Finish Season & View Summary', 'primary big', function () {
-          var summary = Season.finish(s); E.save(); lastWeekResult = null; seasonTab = 'week';
-          renderSeasonSummary(summary);
-        })
+        title
+          ? btn('🏆  ' + (title.kind === 'natl' ? 'Championship Ceremony' : 'Trophy Presentation') + '  →', 'primary big',
+              function () { renderChampionship(title, finishToSummary); })
+          : btn('📜  Finish Season & View Summary', 'primary big', finishToSummary)
       ]));
       return wrap;
     }
@@ -1273,6 +1279,104 @@
     }
 
     draw();
+  }
+
+  // ---- Championship / bowl cutscene (Wave 8) -------------------------------
+  // Determine if the player earned a trophy ceremony this postseason.
+  function playerTitleResult(s) {
+    var ps = s.season.postseason || {};
+    var id = s.team.id;
+    if (ps.champion === id && ps.bracket && ps.bracket.final) return { kind: 'natl', game: ps.bracket.final };
+    // Won a bowl (non-playoff) game?
+    var games = window.GameSeason.playerPostseasonGames(s);
+    for (var i = games.length - 1; i >= 0; i--) {
+      var g = games[i];
+      if (g.bowlName && g.tag === 'Bowl' && g.winner === id) return { kind: 'bowl', game: g };
+    }
+    // Conference championship win, if no bigger prize.
+    var confWin = (ps.confGames || []).filter(function (g) { return (g.home === id || g.away === id) && g.winner === id; })[0];
+    if (confWin) return { kind: 'conf', game: confWin };
+    return null;
+  }
+
+  function renderChampionship(title, onContinue) {
+    var s = E.state;
+    var team = T.get(s.team.id) || { name: s.team.name, nick: '', colors: ['#c8102e', '#fff'], emoji: '🏈' };
+    applyTheme(team);
+    var g = title.game;
+    var myScore = g.home === s.team.id ? g.homeScore : g.awayScore;
+    var oppScore = g.home === s.team.id ? g.awayScore : g.homeScore;
+    var opp = T.get(g.home === s.team.id ? g.away : g.home) || { name: 'Opponent' };
+    var titleName = title.kind === 'natl' ? 'NATIONAL CHAMPIONS'
+      : title.kind === 'bowl' ? (g.bowlName + ' Champions').toUpperCase()
+      : ((T.get(s.team.id) || {}).conf || '') + ' CHAMPIONS';
+    var eyebrow = title.kind === 'natl' ? '🏆 THE NATIONAL CHAMPIONSHIP'
+      : title.kind === 'bowl' ? '🏆 ' + (g.bowlName || 'BOWL GAME').toUpperCase()
+      : '🥇 CONFERENCE CHAMPIONSHIP';
+
+    var canvas = document.createElement('canvas');
+    canvas.className = 'confetti-canvas';
+
+    var natlAfter = s.career.natTitles + (title.kind === 'natl' ? 1 : 0);
+    var confAfter = s.career.confTitles + (title.kind === 'conf' || title.kind === 'natl' ? 0 : 0);
+
+    var card = el('div', { class: 'screen champ-cutscene' }, [
+      canvas,
+      el('div', { class: 'cut-desk' }, [
+        el('div', { class: 'cut-eyebrow', text: eyebrow }),
+        el('div', { class: 'cut-trophy', text: '🏆' }),
+        teamBadge(team, 72),
+        el('div', { class: 'cut-team', text: team.name + ' ' + team.nick }),
+        el('div', { class: 'cut-title', text: titleName }),
+        el('div', { class: 'cut-score', text: 'Defeated ' + opp.name + '  ' + myScore + '–' + oppScore + (g.ot ? ' (' + g.ot + 'OT)' : '') }),
+        el('div', { class: 'cut-coach' }, [
+          coachAvatar(s.coach, 30),
+          el('span', { text: 'Head Coach ' + s.coach.name })
+        ]),
+        el('div', { class: 'cut-milestone', text: milestoneLine(title, natlAfter) }),
+        btn('Continue  →', 'primary big', function () { stop(); onContinue(); })
+      ])
+    ]);
+    mount(card);
+
+    // Confetti in the team colors.
+    var running = true, raf = null;
+    function stop() { running = false; if (raf) cancelAnimationFrame(raf); }
+    var ctx = canvas.getContext('2d');
+    var W, H, parts = [];
+    var palette = [team.colors[0], team.colors[1], '#ffffff', '#ffd400'];
+    function resize() { W = canvas.width = canvas.offsetWidth; H = canvas.height = canvas.offsetHeight; }
+    function seedParts() {
+      parts = [];
+      for (var i = 0; i < 140; i++) parts.push({
+        x: Math.random() * W, y: Math.random() * -H, w: 4 + Math.random() * 6, h: 6 + Math.random() * 8,
+        vy: 1.5 + Math.random() * 3.5, vx: (Math.random() - 0.5) * 1.5, rot: Math.random() * 6.28,
+        vr: (Math.random() - 0.5) * 0.25, c: palette[Math.floor(Math.random() * palette.length)]
+      });
+    }
+    function frame() {
+      if (!running) return;
+      ctx.clearRect(0, 0, W, H);
+      parts.forEach(function (p) {
+        p.y += p.vy; p.x += p.vx; p.rot += p.vr;
+        if (p.y > H + 12) { p.y = -12; p.x = Math.random() * W; }
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.c;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore();
+      });
+      raf = requestAnimationFrame(frame);
+    }
+    // canvas needs layout; defer a tick
+    requestAnimationFrame(function () { resize(); seedParts(); frame(); });
+    window.addEventListener('resize', function () { if (running) { resize(); seedParts(); } });
+  }
+
+  function milestoneLine(title, natlAfter) {
+    var s = E.state;
+    if (title.kind === 'natl') {
+      return natlAfter >= 2 ? ('Title #' + natlAfter + ' — a dynasty is forming.') : 'Your first national title. Immortality begins.';
+    }
+    if (title.kind === 'bowl') return 'A bowl win to cap the season.';
+    return 'Conference champions — on to bigger things.';
   }
 
   // ---- Settings (optional scandals + toggles) ------------------------------
@@ -1882,6 +1986,7 @@
     renderCarousel: renderCarousel,
     renderStore: renderStore,
     renderSettings: renderSettings,
+    renderChampionship: renderChampionship,
     renderFired: renderFired,
     teamBadge: teamBadge,
     toast: toast,

@@ -356,9 +356,15 @@ function serve() {
   await page.click('.season-tabs .tab:has-text("Schedule")');
   await page.waitForSelector('.sch-row');
 
-  // Finish the season -> summary -> signing day -> offseason -> next season
+  // Finish the season -> (maybe a trophy cutscene) -> summary
   await page.click('.season-tabs .tab:has-text("This Week")');
-  await page.click('button:has-text("Finish Season")');
+  if (await page.$('button:has-text("Ceremony"), button:has-text("Trophy Presentation")')) {
+    await page.click('button:has-text("Ceremony"), button:has-text("Trophy Presentation")');
+    await page.waitForSelector('.champ-cutscene');
+    await page.click('.champ-cutscene button:has-text("Continue")');
+  } else {
+    await page.click('button:has-text("Finish Season")');
+  }
   await page.waitForSelector('.summary-card');
   const summaryYear = await page.evaluate(() => document.querySelector('.sum-year').textContent);
   ok(/2025/.test(summaryYear), 'summary shows the completed 2025 season');
@@ -979,6 +985,26 @@ function serve() {
   await page.click('.store-item .si-buy:not([disabled])');
   const wAfter = await page.evaluate(() => window.GameEngine.state.career.wallet);
   ok(wAfter < wBefore, 'buying from the UI spends money');
+
+  group('Championship cutscene (Wave 8)');
+  await page.evaluate(() => {
+    const E = window.GameEngine, S = window.GameSeason, T = window.TeamData;
+    E.newCareer({ id: 'c', name: 'Coach Vance', source: 'custom', ratings: { recruiting: 90, offense: 90, defense: 88, development: 88, discipline: 80, motivation: 88, media: 78 } }, T.get('oregon'));
+    S.start(E.state);
+    while (E.state.season.phase === 'regular') S.simWeek(E.state);
+    S.playConfChamps(E.state); S.playPostseason(E.state);
+    const ps = E.state.season.postseason;
+    ps.champion = 'oregon';
+    if (ps.bracket && ps.bracket.final) { const f = ps.bracket.final; f.winner = 'oregon'; f.home = 'oregon'; f.away = 'michigan'; f.homeScore = 34; f.awayScore = 27; }
+    window.GameUI.renderChampionship({ kind: 'natl', game: ps.bracket.final }, function () { window.GameEngine.state.__cutsceneDone = true; });
+  });
+  await page.waitForSelector('.champ-cutscene .cut-trophy');
+  ok(await page.isVisible('.confetti-canvas'), 'confetti canvas renders');
+  const cutTitle = await page.evaluate(() => document.querySelector('.cut-title').textContent);
+  ok(/NATIONAL CHAMPIONS/.test(cutTitle), 'cutscene shows the national title');
+  await page.click('.champ-cutscene button:has-text("Continue")');
+  const cutDone = await page.evaluate(() => window.GameEngine.state.__cutsceneDone === true);
+  ok(cutDone, 'the cutscene Continue button proceeds');
 
   group('No runtime errors');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));
