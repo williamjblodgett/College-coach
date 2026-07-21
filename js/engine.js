@@ -165,7 +165,8 @@
       history: [],                // season summaries
       settings: {
         sound: true,
-        broadcastSpeed: 'normal'
+        broadcastSpeed: 'normal',
+        scandalIntensity: 'realistic'  // off | light | realistic | chaotic (wave: optional scandals)
       }
     };
   }

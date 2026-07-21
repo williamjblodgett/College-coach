@@ -16,6 +16,14 @@
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
+  // How often temptations appear — a player setting.
+  var INTENSITY = {
+    off: { mult: 0, cap: 0, label: 'Off' },
+    light: { mult: 0.5, cap: 2, label: 'Light' },
+    realistic: { mult: 1, cap: 3, label: 'Realistic' },
+    chaotic: { mult: 1.8, cap: 6, label: 'Chaotic' }
+  };
+
   // ---- temptation catalog ---------------------------------------------------
   // Each event: id, category, once (career-once), cond(state)->bool, title,
   // blurb, options[{ id, label, desc, risky, fx }]. fx is a declarative effect
@@ -77,6 +85,69 @@
         { id: 'deny', label: 'Deny and contain it', desc: 'No immediate cost — but if it comes out, the consequences are severe.', risky: true, fx: { heat: 34, tag: 'personal-conduct allegation', severe: true } },
         { id: 'resign', label: 'Step down quietly', desc: 'Resign the position on your own terms rather than fight it.', fx: { resign: true, tag: 'resignation' } }
       ]
+    },
+    {
+      id: 'car_gift', category: 'Boosters', weight: 2,
+      title: 'Keys to a New Car',
+      blurb: 'A booster wants to hand a wavering recruit the keys to a new truck to close the deal.',
+      options: [
+        { id: 'decline', label: 'Not a chance', desc: 'Keep the program clean.', fx: {} },
+        { id: 'take', label: 'Let it happen', desc: 'The recruit commits — a textbook improper-benefits violation.', risky: true, fx: { recruitPoints: 16, heat: 16, tag: 'improper benefits' } }
+      ]
+    },
+    {
+      id: 'tampering', category: 'Transfer Portal', weight: 2,
+      title: 'Tampering in the Portal',
+      blurb: 'A rival’s star is unhappy. Your staff could quietly reach out before he’s officially in the portal.',
+      options: [
+        { id: 'wait', label: 'Wait for the portal', desc: 'Do it by the book.', fx: {} },
+        { id: 'tamper', label: 'Make the call', desc: 'Get a head start — tampering if anyone talks.', risky: true, fx: { recruitPoints: 12, heat: 14, tag: 'tampering' } }
+      ]
+    },
+    {
+      id: 'practice_hours', category: 'NCAA Rules', weight: 2,
+      title: 'Extra Practice Hours',
+      blurb: 'You could squeeze in “voluntary” workouts well past the weekly practice-time limit.',
+      options: [
+        { id: 'rules', label: 'Respect the limit', desc: 'Rest matters too.', fx: { adTrust: 2 } },
+        { id: 'exceed', label: 'Push past the cap', desc: 'A sharper team now — a countable-hours violation if logged.', risky: true, fx: { heat: 12, tag: 'practice-hours violation' } }
+      ]
+    },
+    {
+      id: 'gambling', category: 'Staff', weight: 1,
+      title: 'A Betting Problem',
+      blurb: 'Word reaches you that an assistant has been betting on games. Sports-wagering rules are strict.',
+      options: [
+        { id: 'report', label: 'Report it', desc: 'Handle it the right way, whatever the cost.', fx: { adTrust: 4 } },
+        { id: 'hide', label: 'Keep it in-house', desc: 'Quietly move on and hope nobody asks.', risky: true, fx: { heat: 18, tag: 'sports-wagering' } }
+      ]
+    },
+    {
+      id: 'grade_grease', category: 'Academics', weight: 1,
+      title: 'A Friendly Professor',
+      blurb: 'A booster professor offers to “take care of” grades for a couple of borderline players.',
+      options: [
+        { id: 'no', label: 'Decline', desc: 'They earn it or they sit.', fx: {} },
+        { id: 'yes', label: 'Take the favor', desc: 'They stay eligible — academic fraud if it surfaces.', risky: true, fx: { heat: 20, tag: 'academic fraud' } }
+      ]
+    },
+    // Positive integrity events — reward clean, well-run programs.
+    {
+      id: 'compliance_award', category: 'Compliance', weight: 2, positive: true,
+      cond: function (state) { return state.integrity.heat < 25 && (!window.GameStaff || window.GameStaff.effects(state).cohesion >= 65); },
+      title: 'A Clean-Program Commendation',
+      blurb: 'Your compliance office is recognized for running a tight, rules-abiding program. The AD takes note.',
+      options: [
+        { id: 'ok', label: 'Accept the recognition', desc: 'Trust and goodwill, earned honestly.', fx: { adTrust: 6, heat: -6, reputation: 2, tag: 'clean program' } }
+      ]
+    },
+    {
+      id: 'community', category: 'Community', weight: 2, positive: true,
+      title: 'A Community Initiative',
+      blurb: 'Your players want to lead a local outreach program. It’s good for them — and for your image.',
+      options: [
+        { id: 'ok', label: 'Champion it', desc: 'Give back and build goodwill.', fx: { reputation: 3, adTrust: 3, tag: 'community outreach' } }
+      ]
     }
   ];
   var EVENT_MAP = {};
@@ -110,13 +181,19 @@
 
     // ---- temptation flow ----------------------------------------------------
     // Called on each week advance: occasionally surface a temptation.
+    INTENSITY: INTENSITY,
+
     maybeTrigger: function (state) {
       var i = state.integrity;
       if (i.pendingEvent || i.fired) return null;
-      if (i.eventsThisSeason >= 3) return null;
+      var intensity = (state.settings && state.settings.scandalIntensity) || 'realistic';
+      var cfg = INTENSITY[intensity] || INTENSITY.realistic;
+      if (cfg.mult <= 0) return null;                 // scandals off
+      if (i.eventsThisSeason >= cfg.cap) return null;
       var rng = E.makeRng((state.season.seed ^ (state.season.week * 0x51ed270b) ^ 0x9e37) >>> 0);
-      // ~16% per week, a touch higher when heat is already up (rivals dig).
-      var chance = 0.14 + (i.heat > 40 ? 0.05 : 0);
+      // ~16% per week, a touch higher when heat is already up (rivals dig),
+      // scaled by the chosen intensity.
+      var chance = (0.14 + (i.heat > 40 ? 0.05 : 0)) * cfg.mult;
       if (rng() > chance) return null;
       var pool = EVENTS.filter(function (e) {
         if (e.once && i.seenEvents.indexOf(e.id) >= 0) return false;

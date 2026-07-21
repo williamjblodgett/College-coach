@@ -811,6 +811,47 @@ function serve() {
   ok(await page.isVisible('.offer-card'), 'fired screen offers a new job');
   await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/scandal.png'), fullPage: true });
 
+  group('Scandal intensity setting (optional scandals)');
+  const si = await page.evaluate(() => {
+    const E = window.GameEngine, S = window.GameSeason, Sc = window.GameScandal, T = window.TeamData;
+    const out = { events: Sc.EVENTS.length, intensities: Object.keys(Sc.INTENSITY) };
+    // OFF: zero temptations across a season.
+    E.newCareer({ id: 'c', name: 'x', source: 'custom', ratings: { recruiting: 70, offense: 70, defense: 70, development: 70, discipline: 55, motivation: 70, media: 65 } }, T.get('oregon'));
+    E.state.settings.scandalIntensity = 'off';
+    S.start(E.state);
+    let off = 0;
+    while (E.state.season.phase === 'regular') { if (Sc.pendingEvent(E.state)) { off++; Sc.resolve(E.state, Sc.pendingEvent(E.state).options[0].id); } S.simWeek(E.state); }
+    out.off = off;
+    // CHAOTIC over 3 seasons: several temptations appear.
+    E.newCareer({ id: 'c2', name: 'y', source: 'custom', ratings: { recruiting: 70, offense: 70, defense: 70, development: 70, discipline: 55, motivation: 70, media: 65 } }, T.get('oregon'));
+    E.state.settings.scandalIntensity = 'chaotic';
+    let chaos = 0;
+    for (let ssn = 0; ssn < 3; ssn++) {
+      S.start(E.state); let g = 0;
+      while (E.state.season.phase === 'regular' && g++ < 40) { if (Sc.pendingEvent(E.state)) { chaos++; Sc.resolve(E.state, Sc.pendingEvent(E.state).options[0].id); } else S.simWeek(E.state); }
+      S.playConfChamps(E.state); S.playPostseason(E.state); S.finish(E.state);
+      if (E.state.integrity.fired) break;
+      window.GameProgram.signingDay(E.state); window.GameProgram.beginOffseason(E.state); window.GameProgram.startNextSeason(E.state);
+    }
+    out.chaos = chaos;
+    return out;
+  });
+  ok(si.events >= 12, 'catalog expanded (' + si.events + ' events)');
+  ok(si.intensities.indexOf('off') >= 0 && si.intensities.indexOf('chaotic') >= 0, 'intensity presets exist');
+  eq(si.off, 0, 'scandals OFF produces zero temptations');
+  ok(si.chaos >= 2, 'CHAOTIC produces multiple temptations (' + si.chaos + ')');
+
+  group('UI: settings screen scandal toggle');
+  await page.evaluate(() => {
+    const E = window.GameEngine, T = window.TeamData;
+    E.newCareer({ id: 'c', name: 'Coach', source: 'custom', ratings: { recruiting: 75, offense: 75, defense: 75, development: 75, discipline: 72, motivation: 75, media: 65 } }, T.get('oregon'));
+    window.GameUI.renderSettings();
+  });
+  await page.waitForSelector('.settings-screen .scandal-chips');
+  await page.click('.settings-screen .scandal-chips .chip:has-text("Off")');
+  const intensityNow = await page.evaluate(() => window.GameEngine.state.settings.scandalIntensity);
+  eq(intensityNow, 'off', 'settings screen changes scandal intensity');
+
   // ---------- (a) CAREER: contracts, salary, carousel ----------
   group('Career: contracts, salary, and the job carousel');
   const car = await page.evaluate(() => {

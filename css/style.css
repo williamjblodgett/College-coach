@@ -359,6 +359,14 @@ h1, h2, h3 { margin: 0 0 6px; line-height: 1.15; }
 .si-buy[disabled] { opacity: .4; cursor: not-allowed; }
 .si-owned { color: var(--accent-2); font-weight: 800; font-size: 12px; white-space: nowrap; }
 
+/* ---- scandal intensity + settings ---- */
+.setup-scandals { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 84px; }
+.ss-label { font-weight: 700; font-size: 13px; color: var(--muted); }
+.scandal-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.scandal-chips .chip { padding: 8px 14px; }
+.set-desc { margin-top: 10px; font-size: 13px; }
+.settings-screen .panel { margin-bottom: 12px; }
+
 /* ---- setup mode toggle ---- */
 .mode-toggle { display: flex; gap: 8px; margin-bottom: 12px; }
 .mode-toggle .chip { flex: 1; padding: 11px; font-size: 13.5px; }

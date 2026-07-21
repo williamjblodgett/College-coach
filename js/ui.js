@@ -315,12 +315,18 @@
           if (!pick.coach.name || !pick.coach.name.trim()) { alert('Give your coach a name.'); return; }
           E.newCareer(pick.coach, pick.team);
           E.state.startMode = pick.startBottom ? 'bottom' : 'established';
+          E.state.settings.scandalIntensity = pick.scandalIntensity || 'realistic';
           if (pick.startBottom) E.state.career.reputation = Math.max(30, E.state.career.reputation - 8);
           E.save();
           renderHQ();
         })
       ])
     ]);
+
+    var scandalRow = window.GameScandal ? el('div', { class: 'setup-scandals' }, [
+      el('span', { class: 'ss-label', text: '⚖️ Scandals:' }),
+      scandalChips(function () { return pick.scandalIntensity || 'realistic'; }, function (v) { pick.scandalIntensity = v; })
+    ]) : null;
 
     var screen = el('div', { class: 'screen' }, [
       el('div', { class: 'screen-head' }, [
@@ -329,10 +335,27 @@
           'Step 2 of 2 — coaching ', pick.team ? el('strong', { text: pick.team.name }) : 'your program', '.'
         ])
       ]),
-      tabHolder, body, footer
+      tabHolder, body, scandalRow, footer
     ]);
     mount(screen);
     refresh();
+  }
+
+  // Reusable scandal-intensity chip selector.
+  function scandalChips(getVal, setVal) {
+    var Scandal = window.GameScandal;
+    var order = ['off', 'light', 'realistic', 'chaotic'];
+    var row = el('div', { class: 'scandal-chips' });
+    function draw() {
+      row.innerHTML = '';
+      order.forEach(function (k) {
+        var cfg = Scandal.INTENSITY[k];
+        row.appendChild(el('button', { class: 'chip' + (getVal() === k ? ' active' : ''),
+          onclick: function () { setVal(k); draw(); } }, [cfg.label]));
+      });
+    }
+    draw();
+    return row;
   }
 
   // ---- Create-a-coach builder ----------------------------------------------
@@ -543,6 +566,7 @@
         btn('📋 Roster', 'ghost', function () { renderRoster('hq'); }),
         btn('🧑‍🏫 Staff', 'ghost', function () { renderStaff('hq'); }),
         window.GameCareer ? btn('🛍️ Store', 'ghost', function () { renderStore('hq'); }) : null,
+        window.GameScandal ? btn('⚙️ Settings', 'ghost', function () { renderSettings(); }) : null,
         btn('💾 Save', 'ghost', function () { E.save(); toast('Career saved.'); }),
         btn('⬇ Export', 'ghost', function () {
           var t = E.serialize();
@@ -1251,6 +1275,50 @@
     draw();
   }
 
+  // ---- Settings (optional scandals + toggles) ------------------------------
+  function renderSettings() {
+    var s = E.state;
+    applyTheme(T.get(s.team.id));
+    s.settings = s.settings || {};
+    var descs = {
+      off: 'No temptations or investigations. Pure football.',
+      light: 'Rare temptations, gentler risk.',
+      realistic: 'A steady trickle of dilemmas (default).',
+      chaotic: 'Frequent temptations — the program is always on the edge.'
+    };
+    var descEl = el('p', { class: 'muted set-desc' });
+    function refreshDesc() { descEl.textContent = descs[s.settings.scandalIntensity || 'realistic']; }
+
+    var screen = el('div', { class: 'screen settings-screen' }, [
+      el('div', { class: 'screen-head' }, [el('h2', { text: '⚙️ Settings' })]),
+      el('div', { class: 'panel' }, [
+        el('h3', { text: '⚖️ Scandal Intensity' }),
+        el('p', { class: 'muted', text: 'How often compliance/scandal dilemmas appear. Change it any time.' }),
+        scandalChips(function () { return s.settings.scandalIntensity || 'realistic'; },
+          function (v) { s.settings.scandalIntensity = v; E.save(); refreshDesc(); }),
+        descEl
+      ]),
+      el('div', { class: 'panel' }, [
+        el('h3', { text: '📺 Broadcast Speed' }),
+        el('div', { class: 'scandal-chips' }, ['slow', 'normal', 'fast'].map(function (sp) {
+          return el('button', { class: 'chip' + ((s.settings.broadcastSpeed || 'normal') === sp ? ' active' : ''),
+            onclick: function (e) {
+              s.settings.broadcastSpeed = sp; E.save();
+              var chips = e.target.parentNode.querySelectorAll('.chip');
+              chips.forEach(function (c) { c.classList.remove('active'); });
+              e.target.classList.add('active');
+            } }, [sp.charAt(0).toUpperCase() + sp.slice(1)]);
+        }))
+      ]),
+      el('div', { class: 'sticky-footer' }, [
+        el('div', { class: 'sf-info' }, [el('span', { text: 'Settings save automatically.' })]),
+        el('div', { class: 'sf-actions' }, [btn('← Back', 'ghost', function () { s.screen = 'hq'; E.save(); renderHQ(); })])
+      ])
+    ]);
+    mount(screen);
+    refreshDesc();
+  }
+
   // ---- Store (Wave 8): spend salary --------------------------------------
   function renderStore(from) {
     var s = E.state, C = window.GameCareer;
@@ -1534,7 +1602,7 @@
       seed: (s.season.seed ^ (s.season.week * 40503)) >>> 0
     });
 
-    var playing = false, speed = SPEEDS.normal, timer = null, wasPlaying = false;
+    var playing = false, speed = SPEEDS[(s.settings && s.settings.broadcastSpeed) || 'normal'] || SPEEDS.normal, timer = null, wasPlaying = false;
 
     // ---- build DOM ----
     var homeU = g.home, awayU = g.away;
@@ -1813,6 +1881,7 @@
     renderOffseason: renderOffseason,
     renderCarousel: renderCarousel,
     renderStore: renderStore,
+    renderSettings: renderSettings,
     renderFired: renderFired,
     teamBadge: teamBadge,
     toast: toast,
