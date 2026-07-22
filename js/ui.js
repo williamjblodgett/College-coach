@@ -34,7 +34,10 @@
 
   function app() { return document.getElementById('app'); }
   function clear() { var a = app(); while (a.firstChild) a.removeChild(a.firstChild); }
-  function mount(node) { clear(); app().appendChild(node); }
+  function mount(node, preserveScroll) {
+    clear(); app().appendChild(node);
+    if (!preserveScroll) window.scrollTo(0, 0);
+  }
 
   // ---- team monogram / logo (drop-in image upgrade) ------------------------
   // Renders a color monogram badge; if images/logos/<id>.png exists it upgrades.
@@ -263,7 +266,7 @@
         list.appendChild(el('button', {
           class: 'card team-card' + (pick.team && pick.team.id === t.id ? ' selected' : ''),
           style: '--card-primary:' + t.colors[0] + ';--card-secondary:' + t.colors[1] + ';',
-          onclick: function () { pick.team = t; renderTeamSelect(); }
+          onclick: function () { pick.team = t; pick.preserveTeamScroll = true; renderTeamSelect(); }
         }, [
           teamBadge(t, 40),
           el('div', { class: 'card-body' }, [
@@ -327,7 +330,9 @@
       el('div', { class: 'program-controls' }, [divisionToggle, modeToggle, el('div', { class: 'toolbar' }, [confSel, search, subtitle])]),
       list, moreWrap, footer
     ]);
-    mount(screen);
+    var keepTeamScroll = !!pick.preserveTeamScroll;
+    pick.preserveTeamScroll = false;
+    mount(screen, keepTeamScroll);
     refresh();
   }
 
