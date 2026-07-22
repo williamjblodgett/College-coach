@@ -86,6 +86,7 @@
         poss: null, los: 25, down: 1, toGo: 10,
         mo: 0,                     // momentum, + favors home
         over: false, pending: null,
+        coachMode: opts.coachMode || 'decisions', selectedPlay: null, defenseCall: null,
         awaitingKickoff: true, kickTo: null, awaitingPAT: null,
         receiverSecondHalf: null,  // team that receives to start 2nd half
         ot: 0, otState: null,
@@ -165,6 +166,7 @@
       if (p.kind === 'fourth_down') return GameSim._aiFourth(g);
       if (p.kind === 'pat') return GameSim._aiPat(g);
       if (p.kind === 'kickoff') return GameSim._aiKickoff(g);
+      if (p.kind === 'play_call') return p.rec || p.options[0].id;
       return p.options ? p.options[0].id : 'ok';
     },
 
@@ -185,6 +187,11 @@
       }
       if (p.kind === 'tempo') {
         g[g.poss].tempo = choiceId; return { tag: 'info', text: 'Tempo: ' + choiceId };
+      }
+      if (p.kind === 'play_call') {
+        if (p.side === g.poss) g.selectedPlay = choiceId;
+        else g.defenseCall = choiceId;
+        return GameSim._snap(g);
       }
       return GameSim.advance(g);
     },
@@ -246,6 +253,33 @@
 
     // ---- snap gate (handles 4th-down decision) ------------------------------
     _snap: function (g) {
+      if (g.coachMode === 'full' && !g.selectedPlay && !g.defenseCall) {
+        var playerOnOffense=GameSim.isPlayer(g,g.poss), playerOnDefense=GameSim.isPlayer(g,other(g.poss));
+        if(playerOnOffense){
+          var offOpts=[
+            {id:'inside_run',label:'Inside Run',desc:'Reliable between the tackles · low risk'},
+            {id:'outside_run',label:'Outside Run',desc:'Attack the edge · bigger loss/breakaway range'},
+            {id:'rpo',label:'RPO / Option',desc:'Read the box · balanced risk'},
+            {id:'quick_pass',label:'Quick Pass',desc:'High completion · limited explosive upside'},
+            {id:'play_action',label:'Play Action',desc:'Stress linebackers · vulnerable to pressure'},
+            {id:'screen',label:'Screen',desc:'Punish blitzes · can be blown up'},
+            {id:'deep_shot',label:'Deep Shot',desc:'Explosive upside · turnover risk',risky:true}
+          ];
+          var offRec=g.toGo<=3?'inside_run':(g.toGo>=9?'quick_pass':'rpo');
+          g.pending={kind:'play_call',side:g.poss,options:offOpts,rec:offRec};return{tag:'decision',text:'Choose offensive play',pending:g.pending};
+        }
+        if(playerOnDefense){
+          var defOpts=[
+            {id:'man',label:'Man Coverage',desc:'Tight windows · vulnerable to deep speed'},
+            {id:'zone',label:'Zone Coverage',desc:'Protect space · balanced default'},
+            {id:'blitz',label:'Blitz',desc:'Pressure the quarterback · explosive risk',risky:true},
+            {id:'run_commit',label:'Run Commit',desc:'Crowd the box · exposed to play action'},
+            {id:'contain',label:'Contain',desc:'Control option and outside runs'},
+            {id:'prevent',label:'Prevent',desc:'Stop deep shots · concede underneath'}
+          ];
+          g.pending={kind:'play_call',side:other(g.poss),options:defOpts,rec:g.toGo>=8?'zone':'man'};return{tag:'decision',text:'Choose defensive call',pending:g.pending};
+        }
+      }
       // End-of-quarter check handled after plays; here just run a down.
       if (g.down === 4) {
         var ctx = GameSim._fourthContext(g);
@@ -309,8 +343,16 @@
     _runPlay: function (g, opt) {
       var rng = g._rng, o = g[g.poss], d = g[other(g.poss)];
       o.stats.plays++;
-      var edge = GameSim._edge(g, g.poss);
-      var type = opt.forceType || GameSim._choosePlayType(g);
+      var edge = GameSim._edge(g, g.poss), call=g.selectedPlay,defCall=g.defenseCall;
+      g.selectedPlay=null;g.defenseCall=null;
+      var callType={inside_run:'run',outside_run:'run',rpo:'run',quick_pass:'short',play_action:'deep',screen:'short',deep_shot:'deep'}[call];
+      var type = opt.forceType || callType || GameSim._choosePlayType(g);
+      if(defCall==='blitz')edge+=(call==='screen'?-5:2);
+      if(defCall==='run_commit')edge+=type==='run'?-5:4;
+      if(defCall==='prevent')edge+=type==='deep'?-7:3;
+      if(defCall==='contain'&&(call==='outside_run'||call==='rpo'))edge-=5;
+      if(defCall==='man'&&type==='short')edge-=2;
+      if(defCall==='zone'&&type==='deep')edge-=2;
       var gain = 0, timeUsed = 35, clockStops = false, ev = { tag: 'run', text: '' };
       var oppName = o.name;
 
@@ -330,8 +372,9 @@
       }
 
       if (type === 'run') {
-        var sd = 4.7;
+        var sd = call==='outside_run'?6.1:4.7;
         gain = gauss(rng, 4.6 + edge * 0.07, sd);
+        if(call==='rpo')gain+=1.0;
         if (rng() < 0.055) gain += 12 + rng() * 34;      // breakaway
         gain = Math.round(clamp(gain, -6, 99));
         timeUsed = o.tempo === 'hurry' ? 24 : (o.tempo === 'milk' ? 42 : 37);
@@ -347,9 +390,13 @@
         // pass
         var deep = type === 'deep';
         var compBase = (deep ? 0.47 : 0.665) + edge * 0.006;
+        if(call==='quick_pass')compBase+=.09;
+        if(call==='screen')compBase+=(defCall==='blitz'?.12:-.03);
+        if(call==='play_action')compBase+=(defCall==='run_commit'?.15:-.02);
         compBase = clamp(compBase, 0.2, deep ? 0.74 : 0.87);
         // sack chance
         var sackP = 0.05 + Math.max(0, -edge) * 0.0015 + (deep ? 0.018 : 0);
+        if(defCall==='blitz')sackP+=.045;if(call==='quick_pass'||call==='screen')sackP-=.025;
         if (rng() < sackP) {
           var loss = Math.round(4 + rng() * 6);
           gain = -Math.min(loss, g.los - 1);
@@ -362,6 +409,7 @@
         }
         // interception
         var intP = (deep ? 0.055 : 0.022) + Math.max(0, -edge) * 0.0009;
+        if(call==='deep_shot')intP+=.018;if(call==='quick_pass')intP-=.009;
         if (rng() < intP) {
           o.stats.to++;
           var spot = Math.round(clamp(g.los + (deep ? 18 + rng() * 20 : 6 + rng() * 8), 1, 99));

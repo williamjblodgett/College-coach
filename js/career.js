@@ -175,6 +175,7 @@
     // overperform and your reputation is high; blue bloods rarely poach laterally.
     generateOffers: function (state, summary) {
       var cur = T.get(state.team.id) || { prestige: 5 };
+      if (summary && summary.wonNatl && cur.prestige >= 9) { state.jobOffers = []; return []; }
       var rep = state.career.reputation;
       var profile = GameCareer.profileScore(state);
       var wins = summary ? summary.wins : 6;
@@ -257,15 +258,19 @@
 
     // ---- store --------------------------------------------------------------
     STORE: STORE, STORE_MAP: STORE_MAP,
-    owns: function (state, id) { return (state.career.purchases || []).indexOf(id) >= 0; },
+    purchaseLevel: function (state, id) { return (state.career.purchases || []).filter(function (x) { return x === id; }).length; },
+    owns: function (state, id) { return GameCareer.purchaseLevel(state, id) > 0; },
+    maxTier: function (item) { return item.once ? 1 : 3; },
+    nextCost: function (state, item) { return Math.round(item.cost * (1 + GameCareer.purchaseLevel(state, item.id) * 0.65) * 10) / 10; },
 
     buy: function (state, id) {
       var it = STORE_MAP[id];
       if (!it) return { ok: false };
-      if (it.once && GameCareer.owns(state, id)) return { ok: false, reason: 'owned' };
-      if ((state.career.wallet || 0) < it.cost) return { ok: false, reason: 'funds' };
-      state.career.wallet = Math.round((state.career.wallet - it.cost) * 10) / 10;
-      state.career.spent = Math.round(((state.career.spent || 0) + it.cost) * 10) / 10;
+      var level = GameCareer.purchaseLevel(state, id), cost = GameCareer.nextCost(state, it);
+      if (level >= GameCareer.maxTier(it)) return { ok: false, reason: 'maxed' };
+      if ((state.career.wallet || 0) < cost) return { ok: false, reason: 'funds' };
+      state.career.wallet = Math.round((state.career.wallet - cost) * 10) / 10;
+      state.career.spent = Math.round(((state.career.spent || 0) + cost) * 10) / 10;
       (state.career.purchases = state.career.purchases || []).push(id);
       // Immediate (one-time) effects.
       var e = it.effect || {};
@@ -277,7 +282,7 @@
       if (e.recognition) state.career.nameRecognition = clamp((state.career.nameRecognition || 10) + e.recognition, 0, 100);
       if (e.fame) state.career.fame = clamp((state.career.fame || 5) + e.fame, 0, 100);
       if (e.adTrust && state.integrity) state.integrity.adTrust = clamp(state.integrity.adTrust + e.adTrust, 0, 100);
-      return { ok: true, item: it };
+      return { ok: true, item: it, level: level + 1, cost: cost };
     },
 
     // Ongoing effects summed from owned items.

@@ -49,8 +49,8 @@
 
   // ---- ratings --------------------------------------------------------------
   function ratingFor(team, year, coach, isPlayer) {
-    var wob = (hashStr(team.id + ':' + year) % 15) - 7; // -7..+7, stable per season
-    var r = 44 + team.prestige * 4.6 + wob;
+    var wob = (hashStr(team.id + ':' + year) % 9) - 4; // stable identity, less random tier overlap
+    var r = 38 + team.prestige * 5.5 + wob;
     if (isPlayer && coach && coach.ratings) {
       var c = coach.ratings;
       var coachAvg = (c.offense + c.defense + c.development + c.discipline + c.motivation + c.recruiting) / 6;
@@ -178,8 +178,11 @@
     var hr = league[g.home].rating + (g.neutral ? 0 : 3); // home-field edge
     var ar = league[g.away].rating;
     var diff = hr - ar;
-    var hs = 21 + diff * 0.45 + (rng() * 2 - 1) * 17;
-    var as = 21 - diff * 0.45 + (rng() * 2 - 1) * 17;
+    function bell() { var n = 0; for (var i = 0; i < 6; i++) n += rng(); return n - 3; }
+    var total = 51 + bell() * 6;
+    var margin = diff * 0.72 + bell() * 8;
+    var hs = (total + margin) / 2;
+    var as = (total - margin) / 2;
     hs = clamp(Math.round(hs), 0, 70);
     as = clamp(Math.round(as), 0, 70);
     if (hs === as) { if (rng() < 0.5) hs += 3; else as += 3; } // break ties (OT)
@@ -228,6 +231,9 @@
       if (window.GameProgram && league[state.team.id]) {
         window.GameProgram.ensureProgram(state);
         league[state.team.id].rating = window.GameProgram.playerTeamRating(state);
+        if (state.recruiting && !state.recruiting.signed && state.recruiting.points <= 0) {
+          state.recruiting.points = window.GameProgram.weeklyRecruitPoints(state);
+        }
       }
       s.league = league;
       s.schedule = buildSchedule(teams, rng, state.team.id);
@@ -321,11 +327,22 @@
       return { week: wk, games: games, playerGame: playerGame };
     },
 
+    simToDecision: function(state,limit){
+      var out=null,n=0;limit=limit||TOTAL_REG_WEEKS;
+      while(state.season.phase==='regular'&&n++<limit){
+        out=GameSeason.simWeek(state);
+        if((window.GameScandal&&window.GameScandal.pendingEvent(state)) ||
+          (window.GameCases&&window.GameCases.pending(state)) ||
+          (window.GameStory&&window.GameStory.pending(state))) break;
+      }
+      return out;
+    },
+
     // Conference title games: top two by conference record meet at a neutral site.
-    playConfChamps: function (state) {
+    prepareConfChamps: function (state) {
       var s = state.season;
       if (s.phase !== 'confchamp') return null;
-      var rng = E.makeRng((s.seed ^ 0x9e3779b9) >>> 0);
+      if (s.postseason.confGames && s.postseason.confGames.length) return s.postseason.confGames;
       var teams = GameSeason.leagueTeams(state);
       var byConf = {};
       teams.forEach(function (t) { (byConf[t.conf] = byConf[t.conf] || []).push(t.id); });
@@ -336,9 +353,7 @@
         if (ids.length >= 4) {
           var g = { home: ids[0], away: ids[1], conf: true, rivalry: false, neutral: true,
             homeScore: null, awayScore: null, played: false, tag: conf + ' Championship', bowlName: conf + ' Championship' };
-          simGame(g, s.league, rng);
-          s.postseason.confChamps[conf] = g.winner;
-          s.league[g.winner].champ = true;
+          g.isConfChamp = true;
           titleGames.push(g);
           (s.postseason.confGames = s.postseason.confGames || []).push(g);
         } else if (ids.length) {
@@ -347,10 +362,28 @@
           s.league[ids[0]].champ = true;
         }
       });
-      s.rankings = computeRankings(s.league, Object.keys(s.league));
-      s.phase = 'postseason';
-      GameSeason.syncPlayerRecord(state);
       return titleGames;
+    },
+
+    playerConfChampGame: function (state) {
+      return (GameSeason.prepareConfChamps(state) || []).filter(function (g) { return !g.played && (g.home === state.team.id || g.away === state.team.id); })[0] || null;
+    },
+
+    playConfChamps: function (state, preservePlayer) {
+      var s = state.season, games = GameSeason.prepareConfChamps(state);
+      if (!games) return null;
+      var rng = E.makeRng((s.seed ^ 0x9e3779b9) >>> 0);
+      games.forEach(function (g) { var mine=g.home===state.team.id||g.away===state.team.id; if(!g.played && !(preservePlayer&&mine)) simGame(g,s.league,rng); });
+      if (games.every(function (g) { return g.played; })) {
+        games.forEach(function (g) { s.postseason.confChamps[(T.get(g.home)||{}).conf] = g.winner; s.league[g.winner].champ = true; });
+        s.rankings = computeRankings(s.league, Object.keys(s.league)); s.phase = 'postseason'; GameSeason.syncPlayerRecord(state);
+      }
+      return games;
+    },
+
+    commitConfChampResult: function(state,game,homeScore,awayScore,teamTotals){
+      if(!game||game.played)return null;game.homeScore=homeScore;game.awayScore=awayScore;applyResult(game,state.season.league);
+      if(window.GameFootball)window.GameFootball.recordGame(state,game,teamTotals);GameSeason.playConfChamps(state,false);return game;
     },
 
     _confSort: function (league, a, b) {
@@ -394,6 +427,8 @@
       // Re-seed 1..12 by ranking order.
       seeds.sort(function (a, b) { return rankOf[a] - rankOf[b]; });
       s.postseason.cfpSeeds = seeds.slice();
+      s.postseason.seedOf = {};
+      seeds.forEach(function (id, idx) { s.postseason.seedOf[id] = idx + 1; });
 
       function game(home, away, tag, site, neutral) {
         return { home: home, away: away, conf: false, rivalry: false, neutral: neutral !== false,
@@ -612,6 +647,9 @@
       // Compliance review: AD trust, investigation + verdict, sanctions, firing.
       if (window.GameScandal) {
         summary.verdict = window.GameScandal.endSeasonReview(state, summary);
+        summary.riskyDecisions = state.integrity.riskyThisSeason || 0;
+        summary.latestScandal = state.integrity.latestOutcome || null;
+        summary.activeCases = state.integrity.openCases ? state.integrity.openCases.length : 0;
         summary.fired = state.integrity.fired;
         summary.firedReason = state.integrity.firedReason;
         summary.adTrust = state.integrity.adTrust;

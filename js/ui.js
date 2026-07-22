@@ -227,7 +227,7 @@
         el('span', { text: '🏈 4 divisions' }), el('span', { text: '🧑‍💼 assistant-to-legend careers' }),
         el('span', { text: '🌎 evolving worlds' }), el('span', { text: '📴 offline PWA' })
       ]),
-      el('p', { class: 'title-foot', text: 'v2.6 · Playoff Game Center · ' + T.all().length + ' playable programs' })
+      el('p', { class: 'title-foot', text: 'v2.7 · Living Dynasty · ' + T.all().length + ' playable programs' })
     ]);
     mount(card);
   }
@@ -877,7 +877,8 @@
         el('span',{class:'coach-rank-name'},[el('strong',{text:r.name}),el('small',{text:r.player?' Your active dynasty':' Historic résumé'})]),
         el('span',{class:'coach-rank-stat',text:r.wins+' W'}),el('span',{class:'coach-rank-stat',text:r.titles+' titles'}),el('span',{class:'coach-rank-score',text:r.score})
       ]);})),
-      el('p',{class:'muted ranking-note',text:'The GOAT index is an in-game comparison metric, not an official historical ranking.'})
+      el('p',{class:'muted ranking-note',text:'The GOAT index is an in-game comparison metric, not an official historical ranking.'}),
+      el('div',{class:'sticky-footer'},[el('div',{class:'sf-info'},[el('span',{text:'Next target: '+(rows[mine.rank-2] ? rows[mine.rank-2].name : 'You lead the pantheon')})]),el('div',{class:'sf-actions'},[btn('← Back to HQ','primary',renderHQ)])])
     ]);mount(screen);
   }
 
@@ -1109,6 +1110,10 @@
           while (s.season.phase === 'regular') lastWeekResult = Season.simWeek(s);
           E.save(); draw(); refreshHero();
         }));
+        weekBtns.push(btn('⏭  Sim to Next Decision', 'ghost', function () {
+          lastWeekResult = Season.simToDecision(s); E.save(); draw(); refreshHero();
+          toast(s.season.phase === 'regular' ? 'Stopped for a program decision.' : 'Regular season complete.');
+        }));
         wrap.appendChild(el('div', { class: 'btn-row' }, weekBtns));
         // Top games this week (already-played previous week shown via banner; here show scoreboard of last simmed week).
         if (lastWeekResult && lastWeekResult.games) {
@@ -1116,10 +1121,12 @@
           wrap.appendChild(scoreboardGrid(topGames(lastWeekResult.games, 8)));
         }
       } else if (phase === 'confchamp') {
+        var confMine = Season.playerConfChampGame(s);
         wrap.appendChild(el('h3', { class: 'sec-title', text: 'Conference Championship Week' }));
         wrap.appendChild(el('p', { class: 'muted', text: 'The regular season is in the books. Conference title games are set.' }));
         wrap.appendChild(el('div', { class: 'btn-row' }, [
-          btn('🏟️  Play Championship Games', 'primary big', function () {
+          confMine ? btn('🏟️ Coach Your Championship', 'primary big', function () { renderGameDay(confMine); }) : null,
+          btn(confMine ? '⚡ Play Championship Games (Quick Sim)' : '🏟️ Play Championship Games', confMine ? 'ghost' : 'primary big', function () {
             var games = Season.playConfChamps(s); E.save();
             lastWeekResult = null; draw(); refreshHero();
             var mine = games.filter(function (g) { return g.home === s.team.id || g.away === s.team.id; })[0];
@@ -1165,8 +1172,8 @@
           el('div', {}, [el('div', { class: 'playoff-kicker', text: 'LIVE BRACKET' }), el('h3', { text: active })]),
           el('span', { class: 'playoff-count', text: games.filter(function (g) { return g.played; }).length + '/' + games.length + ' final' })
         ]),
-        el('div', { class: 'scoreboard playoff-scoreboard' }, games.map(function (g) { return miniGame(g, { rank: rankMap(), player: g.home === s.team.id || g.away === s.team.id }); })),
-        mine ? el('div', { class: 'playoff-callout', text: 'Your season is on the line. Enter the broadcast to call tempo, fourth downs, conversions, and kickoff strategy.' }) : null,
+        el('div', { class: 'scoreboard playoff-scoreboard' }, games.map(function (g) { return miniGame(g, { rank: s.season.postseason.seedOf || {}, player: g.home === s.team.id || g.away === s.team.id }); })),
+        mine ? el('div', { class: 'playoff-callout', text: 'Your season is on the line. Call every offensive snap, defensive look, tempo change, and fourth-down decision.' }) : null,
         el('div', { class: 'btn-row' }, controls), compactBracket()
       ]);
     }
@@ -1235,7 +1242,7 @@
           ])
         ]));
       }
-      var rk = rankMap();
+      var rk = ps.seedOf || rankMap();
       function round(title, games) {
         if (!games || !games.length) return null;
         return el('div', { class: 'bracket-round' }, [
@@ -1383,6 +1390,12 @@
       }
 
       wrap.appendChild(el('h4', { class: 'sec-sub', text: 'Recruiting Board' }));
+      wrap.appendChild(el('div', { class: 'btn-row' }, [
+        el('button', { class: 'chip' + ((s.settings.recruitingAssist || 'assisted') === 'assisted' ? ' active' : ''), onclick: function () {
+          s.settings.recruitingAssist = s.settings.recruitingAssist === 'manual' ? 'assisted' : 'manual'; E.save(); draw();
+        } }, [(s.settings.recruitingAssist || 'assisted') === 'assisted' ? '🤝 Staff Assistance: On' : 'Manual Recruiting']),
+        el('span', { class: 'muted', text: 'Your staff automatically invests unused weekly points in needs and best-fit prospects.' })
+      ]));
       var list = el('div', { class: 'board' });
       var open = rec.board.filter(function (p) { return p.status === 'open'; }).slice(0, 40);
       if (!open.length) list.appendChild(el('p', { class: 'muted', text: 'No open prospects remain on the board.' }));
@@ -1399,11 +1412,12 @@
             el('span', { class: 'br-fit', text: pitch.label + ': ' + pitch.letter + (p.visited ? ' · Visited' : '') })
           ]),
           el('span', { class: 'br-ovr', text: p.proj }),
-          el('span', { class: 'br-lean' }, [el('span', { class: 'br-lean-fill', style: 'width:' + leanPct + '%' })]),
+          el('span', { class: 'br-lean', title: leanPct + '% lean' }, [el('span', { class: 'br-lean-fill', style: 'width:' + leanPct + '%' }), el('span', { class: 'br-lean-label', text: leanPct + '%' })]),
           rec.signed ? null : el('span', { class: 'br-actions' }, [
             el('button', { class: 'btn br-btn', disabled: rec.points <= 0 ? 'disabled' : null, onclick: function () {
               var res = P.recruitEffort(s, p.id, Math.min(4, rec.points));
               if (res && res.committed) toast('🎉 ' + p.name + ' commits to ' + T.get(s.team.id).name + '!');
+              else if (res) toast(p.name + ' is now ' + Math.round(p.lean) + '% toward your program.');
               E.save(); draw();
             } }, ['Recruit']),
             el('button', { class: 'btn br-btn ghost', disabled: rec.points < 8 || p.visited ? 'disabled' : null, onclick: function () {
@@ -1473,16 +1487,18 @@
   function verdictBlock(sum) {
     var v = sum.verdict;
     if (!v) return null;
-    if (!v.investigated && v.severity !== 'simmering' && !sum.fired) {
+    if (!v.investigated && v.severity !== 'simmering' && !sum.fired && !v.escaped) {
       if (sum.postseasonBanned) return el('div', { class: 'verdict-block' }, [el('div', { class: 'vb-line muted', text: 'Served a postseason ban this year. No new violations found.' })]);
       return null;
     }
-    var sevLabel = { cleared: 'Cleared', secondary: 'Secondary Violations', major: 'Major Violations', severe: 'Show-Cause', simmering: 'Allegation Unresolved', hotseat: 'Dismissed' }[v.severity] || '';
+    var sevLabel = v.escaped ? 'Escaped Scrutiny' : ({ cleared: 'Cleared', secondary: 'Secondary Violations', major: 'Major Violations', severe: 'Show-Cause', simmering: 'Allegation Unresolved', hotseat: 'Dismissed' }[v.severity] || '');
     var cls = (v.severity === 'severe' || sum.fired) ? 'bad' : (v.severity === 'major' ? 'warn' : 'ok');
     return el('div', { class: 'verdict-block ' + cls }, [
       el('div', { class: 'vb-head', text: '🏛️ NCAA / Compliance Review' }),
       el('div', { class: 'vb-sev', text: sevLabel }),
       (v.sanctions && v.sanctions.length) ? el('div', { class: 'vb-sanctions' }, v.sanctions.map(function (x) { return el('div', { class: 'vb-item', text: '• ' + x }); })) : null,
+      v.escaped && v.payoff ? el('div', { class: 'vb-line', text: 'Risk bonus: +' + v.payoff.recognition + ' name recognition · +' + v.payoff.fame + ' fame. Career evidence remains on file.' }) : null,
+      sum.latestScandal ? el('div', { class: 'vb-line muted', text: 'Latest decision: ' + sum.latestScandal.title + ' — ' + sum.latestScandal.choice }) : null,
       v.severity === 'simmering' ? el('div', { class: 'vb-line muted', text: 'The allegation did not surface this year — but it is not going away.' }) : null
     ]);
   }
@@ -1819,6 +1835,11 @@
         }))
       ]),
       el('div', { class: 'panel' }, [
+        el('h3', { text: '🎧 Game-Day Coaching' }),
+        el('p', { class: 'muted', text: 'Full Control calls offense and defense every snap. Decisions Only keeps the faster original broadcast.' }),
+        settingChips([{id:'full',label:'Full Control'},{id:'decisions',label:'Decisions Only'}], function(){ return s.settings.coachMode || 'full'; }, function(id){ s.settings.coachMode=id; E.save(); })
+      ]),
+      el('div', { class: 'panel' }, [
         el('h3', { text: 'Accessibility' }),
         el('button', { class: 'chip' + (s.settings.sound ? ' active' : ''), onclick: function () {
           s.settings.sound = !s.settings.sound; E.save(); renderSettings();
@@ -1844,6 +1865,7 @@
     applyTheme(T.get(s.team.id));
     var back = from === 'hq' ? function () { s.screen = 'hq'; E.save(); renderHQ(); } : function () { s.screen = 'hq'; E.save(); renderHQ(); };
     var cats = ['Program', 'Career', 'Legacy', 'Lifestyle'];
+    var activeCat = 'Program';
     var catLabel = { Program: '🏈 Program Investments', Career: '💼 Your Personal Team', Legacy: '🏛️ Legacy', Lifestyle: '💎 Lifestyle & Flex' };
     var catBlurb = {
       Program: 'Reinvest in the team — recruiting, development, facilities.',
@@ -1858,27 +1880,31 @@
         el('span', { class: 'sw-sub muted', text: 'available · $' + (s.career.spent || 0).toFixed(1) + 'M spent all-time' })
       ]);
 
-      var sections = cats.map(function (cat) {
+      var categoryTabs = el('div', { class: 'tabs store-tabs' }, cats.map(function (cat) {
+        return el('button', { class: 'tab' + (cat === activeCat ? ' active' : ''), onclick: function () { activeCat = cat; draw(); } }, [cat]);
+      }));
+      var sections = cats.filter(function (cat) { return cat === activeCat; }).map(function (cat) {
         var items = C.STORE.filter(function (it) { return it.cat === cat; });
         return el('div', { class: 'panel store-section' }, [
           el('h3', { text: catLabel[cat] }),
           el('p', { class: 'muted store-blurb', text: catBlurb[cat] }),
           el('div', { class: 'store-grid' }, items.map(function (it) {
-            var owned = it.once && C.owns(s, it.id);
-            var afford = (s.career.wallet || 0) >= it.cost;
+            var level = C.purchaseLevel(s, it.id), max = C.maxTier(it), owned = level >= max, cost = C.nextCost(s, it);
+            var afford = (s.career.wallet || 0) >= cost;
             return el('div', { class: 'store-item' + (owned ? ' owned' : '') }, [
               el('div', { class: 'si-emoji', text: it.emoji }),
               el('div', { class: 'si-body' }, [
-                el('div', { class: 'si-name', text: it.name }),
+                el('div', { class: 'si-name', text: it.name + ' · Tier ' + level + '/' + max }),
                 el('div', { class: 'si-desc muted', text: it.desc })
               ]),
               owned
                 ? el('span', { class: 'si-owned', text: '✓ Owned' })
                 : el('button', { class: 'btn si-buy', disabled: !afford ? 'disabled' : null,
                     onclick: function () {
+                      var before = (s.career.wallet || 0).toFixed(1);
                       var res = C.buy(s, it.id);
-                      if (res.ok) { toast('Bought ' + it.name + '!'); E.save(); draw(); }
-                    } }, ['$' + it.cost + 'M'])
+                      if (res.ok) { toast(it.name + ' upgraded to Tier ' + res.level + ' · $' + before + 'M → $' + s.career.wallet.toFixed(1) + 'M'); E.save(); draw(); }
+                    } }, ['$' + cost + 'M'])
             ]);
           }))
         ]);
@@ -1889,7 +1915,7 @@
           el('h2', { text: 'The Coach’s Store' }),
           el('p', { class: 'muted', text: 'Spend your salary. Program buys help the team; some personal buys quietly help too.' })
         ]),
-        walletBar
+        walletBar, categoryTabs
       ].concat(sections).concat([
         el('div', { class: 'sticky-footer' }, [
           el('div', { class: 'sf-info' }, [el('span', { text: 'Wallet $' + (s.career.wallet || 0).toFixed(1) + 'M' })]),
@@ -2098,7 +2124,8 @@
   function renderGameDay(postseasonGame) {
     var s = E.state;
     var Season = window.GameSeason, Sim = window.GameSim;
-    var isPostseason = !!postseasonGame;
+    var isConfChamp = !!(postseasonGame && postseasonGame.isConfChamp);
+    var isPostseason = !!postseasonGame && !isConfChamp;
     var pg = postseasonGame || Season.playerWeekGame(s);
     if (!pg) { renderSeason(); return; }
 
@@ -2128,10 +2155,12 @@
 
     applyTheme(T.get(playerId));
     var homeTeam = T.get(pg.home), weather = pg.weather || (tactical && tactical.weather);
-    var venue = (isPostseason && pg.neutral ? (pg.bowlName || 'Neutral Site') : homeTeam.stadium + ' · ' + homeTeam.city + ', ' + homeTeam.st) + (weather ? ' · ' + weather.kind + ' ' + weather.temp + '°F' : '');
+    var weatherText = weather ? (' · ' + weather.kind + (weather.temp == null ? '' : ' ' + weather.temp + '°F') + (weather.wind == null ? '' : ' · wind ' + weather.wind + ' mph')) : '';
+    var venue = (isPostseason && pg.neutral ? (pg.bowlName || 'Neutral Site') : homeTeam.stadium + ' · ' + homeTeam.city + ', ' + homeTeam.st) + weatherText;
     var g = Sim.create({
       home: homeCfg, away: awayCfg, playerSide: playerSide,
       stakes: stakes, neutral: !!pg.neutral, venue: venue,
+      coachMode: (s.settings && s.settings.coachMode) || 'full',
       seed: (s.season.seed ^ (isPostseason ? ((pg.tag || '').length * 65537 + (pg.home || '').length * 40503) : s.season.week * 40503)) >>> 0
     });
     if (tactical) g[playerSide].tempo = tactical.tempo;
@@ -2288,7 +2317,8 @@
     function showDecision() {
       stopAuto(true);
       var p = g.pending;
-      var title = { fourth_down: '4th Down — Your Call', pat: 'After the Touchdown', kickoff: 'Kickoff Strategy' }[p.kind] || 'Decision';
+      var title = { fourth_down: '4th Down — Your Call', pat: 'After the Touchdown', kickoff: 'Kickoff Strategy',
+        play_call: g.poss === playerSide ? 'Call the Offensive Play' : 'Set the Defense' }[p.kind] || 'Decision';
       var sub = p.kind === 'fourth_down' ? (Sim.downLabel(g) + ' at the ' + ballOnText()) : '';
       var card = el('div', { class: 'decision-card' }, [
         el('div', { class: 'dc-title', text: title }),
@@ -2369,7 +2399,10 @@
           g.ot ? el('div', { class: 'fc-ot', text: g.ot + ' OT' }) : null,
           el('div', { class: 'fc-stat', text: statLine() }),
           btn('Continue  →', 'primary big', function () {
-            if (isPostseason) {
+            if (isConfChamp) {
+              Season.commitConfChampResult(s, pg, res.homeScore, res.awayScore, g[playerSide].stats);
+              lastWeekResult = null;
+            } else if (isPostseason) {
               Season.commitPostseasonResult(s, pg, res.homeScore, res.awayScore, g[playerSide].stats);
               lastWeekResult = null;
             } else lastWeekResult = Season.commitPlayerResult(s, res.homeScore, res.awayScore, g[playerSide].stats);

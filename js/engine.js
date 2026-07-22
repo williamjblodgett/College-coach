@@ -227,7 +227,10 @@
         difficulty: 'dynasty',
         difficultyCustom: null,
         reducedMotion: false,
-        scandalIntensity: 'realistic'  // off | light | realistic | chaotic (wave: optional scandals)
+        scandalIntensity: 'realistic', // off | light | realistic | chaotic
+        coachMode: 'full',             // full | key | decisions | sim
+        recruitingAssist: 'assisted', // assisted | manual
+        simPolicy: 'stop'              // stop at major story decisions
       }
     };
   }

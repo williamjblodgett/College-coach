@@ -1084,7 +1084,7 @@ function serve() {
   });
   await page.waitForSelector('.store-item');
   const items = await page.evaluate(() => document.querySelectorAll('.store-item').length);
-  ok(items >= 28, 'store screen renders the expanded catalog (' + items + ')');
+  ok(items >= 9 && await page.locator('.store-tabs .tab').count() === 4, 'store screen renders a focused category with four filters (' + items + ' visible)');
   const wBefore = await page.evaluate(() => window.GameEngine.state.career.wallet);
   await page.click('.store-item .si-buy:not([disabled])');
   const wAfter = await page.evaluate(() => window.GameEngine.state.career.wallet);
@@ -1205,10 +1205,10 @@ function serve() {
   group('No runtime errors');
   const releaseUpdate = await page.evaluate(async () => {
     const [sw, pwa] = await Promise.all([fetch('/sw.js').then(r => r.text()), fetch('/js/pwa.js').then(r => r.text())]);
-    return { immediate: sw.includes('self.skipWaiting();'), cache: sw.includes('gridiron-dynasty-v26-playoff-mobile'), genericNotice: pwa.includes('New Gridiron Dynasty release installed') };
+    return { immediate: sw.includes('self.skipWaiting();'), cache: sw.includes('gridiron-dynasty-v27-living-dynasty'), genericNotice: pwa.includes('New Gridiron Dynasty release installed') };
   });
   ok(releaseUpdate.immediate, 'service worker activates releases immediately');
-  ok(releaseUpdate.cache, 'latest v25.1 cache name is shipped');
+  ok(releaseUpdate.cache, 'latest v27 cache name is shipped');
   ok(releaseUpdate.genericNotice, 'PWA update message is release-agnostic');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));
 

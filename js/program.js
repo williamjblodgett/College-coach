@@ -140,7 +140,7 @@
       var team = T.get(state.team.id) || { prestige: 5 };
       var baseline = 44 + team.prestige * 4.6;                 // matches AI center
       var rr = GameProgram.rosterRatings(state);
-      var expectedRoster = 60 + team.prestige * 1.6;           // fresh roster for this tier
+      var expectedRoster = 57 + team.prestige * 2.2;           // elite depth should feel materially different
       var rosterMod = (rr.overall - expectedRoster) * 0.6;     // recruiting/development payoff
       var c = state.coach.ratings || {};
       var coachBump = ((c.offense + c.defense + c.motivation + c.development) / 4 - 65) * 0.10;
@@ -217,6 +217,26 @@
       return Math.round(pts);
     },
 
+    // Let a recruiting coordinator keep a viable class moving when the player
+    // advances quickly. The assistant focuses needs, fit, stars, and prospects
+    // already close to committing; manual mode remains fully available.
+    delegateRecruiting: function (state, budget) {
+      var rec=state.recruiting;
+      if (!rec || rec.signed || !rec.board.length || (state.settings&&state.settings.recruitingAssist)==='manual') return [];
+      var needs={}; POS_PLAN.forEach(function(x){var have=GameProgram.posGroup(state.roster||[],x[0]).length;needs[x[0]]=Math.max(0,x[2]-have);});
+      budget=Math.min(rec.points,budget==null?Math.max(8,Math.round(rec.points*.72)):budget);
+      var log=[],guard=0;
+      while(budget>=4&&rec.points>=4&&guard++<30){
+        var pool=rec.board.filter(function(p){return p.status==='open';});if(!pool.length)break;
+        pool.sort(function(a,b){function score(p){return p.lean*1.4+p.stars*16+GameProgram.pitchGrade(state,p).score*.45+(needs[p.pos]||0)*18-(p.heat||0)*.25;}return score(b)-score(a);});
+        var p=pool[0],res=GameProgram.recruitEffort(state,p.id,4);budget-=4;
+        if(res&&res.ok)log.push({id:p.id,name:p.name,lean:res.lean,committed:res.committed});
+        if(res&&res.committed)needs[p.pos]=Math.max(0,(needs[p.pos]||0)-1);
+      }
+      rec.delegationLog=(rec.delegationLog||[]).concat(log).slice(-12);
+      return log;
+    },
+
     // Called each time a week is advanced: grant points + AI competition.
     onWeekAdvanced: function (state) {
       var rec = state.recruiting;
@@ -240,6 +260,7 @@
         var leaveP = 0.02 + (p.stars - 2) * 0.03 - p.lean * 0.0006 - p.heat * 0.02;
         if (rng() < clamp(leaveP, 0.004, 0.2)) { p.status = 'lost'; }
       });
+      GameProgram.delegateRecruiting(state);
     },
 
     // Spend recruiting points on a prospect to raise their lean toward you.
