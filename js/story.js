@@ -24,7 +24,11 @@
       {id:'believe',label:'We expected to win',desc:'Project confidence and raise expectations.',fx:{recognition:5,fame:4,players:2}},
       {id:'underdog',label:'Embrace the underdog story',desc:'Become the season’s feel-good program.',fx:{media:6,fame:3,recruiting:6}},
       {id:'quiet',label:'Keep it inside the building',desc:'Protect focus and lower the temperature.',fx:{players:4,ad:3}}
-    ]}
+    ]},
+    rivalry:{id:'rivalry',title:'Rivalry Week Microphones',prompt:'This result will live all year. What defines the rivalry now?',options:[{id:'respect',label:'Respect the rival',desc:'Cool the temperature and build credibility.',fx:{media:3,ad:2}},{id:'claim',label:'Claim the state',desc:'Turn the win into recruiting momentum.',fx:{fame:3,recruiting:5}},{id:'fire',label:'Pour fuel on it',desc:'Energize fans and raise scrutiny.',fx:{boosters:4,heat:3}}]},
+    streak:{id:'streak',title:'The Streak Defines the Season',prompt:'The questions are now about pressure, not one result.',options:[{id:'routine',label:'Keep the routine',desc:'Steady the locker room.',fx:{players:3,ad:1}},{id:'embrace',label:'Embrace expectations',desc:'Raise the national profile.',fx:{fame:3,recognition:3}},{id:'shield',label:'Shield the team',desc:'Take the pressure yourself.',fx:{media:2,players:2}}]},
+    hotseat:{id:'hotseat',title:'Questions About Your Future',prompt:'The program is sliding and the job questions are direct.',options:[{id:'own',label:'Own the record',desc:'Protect trust with accountability.',fx:{ad:3,media:2}},{id:'plan',label:'Promise changes',desc:'Raise expectations for the next month.',fx:{ad:2,ability:1}},{id:'deflect',label:'Attack the premise',desc:'Rally loyalists but alienate media.',fx:{boosters:3,media:-5}}]},
+    playoff:{id:'playoff',title:'Playoff Pressure Arrives',prompt:'The season has become a referendum on championships.',options:[{id:'standard',label:'This is the standard',desc:'Project a championship culture.',fx:{recognition:4,fame:2}},{id:'moment',label:'Enjoy the moment',desc:'Keep players loose.',fx:{players:4,morale:3}},{id:'business',label:'Treat it as business',desc:'Strengthen staff focus.',fx:{staff:4,ad:2}}]}
   };
   function ensure(state) {
     var c=state.career;
@@ -41,7 +45,10 @@
       var c=ensure(state); if(c.pendingPress||!game)return null;
       var mine=game.home===state.team.id?game.homeScore:game.awayScore, opp=game.home===state.team.id?game.awayScore:game.homeScore;
       var myTeam=window.TeamData.get(state.team.id), oppTeam=window.TeamData.get(game.home===state.team.id?game.away:game.home);
-      var kind=mine>opp?'win':'loss'; if(mine>opp&&oppTeam&&myTeam&&oppTeam.prestige-myTeam.prestige>=3)kind='upset';
+      c.pressSeasonCount=c.pressSeasonYear===state.career.year?(c.pressSeasonCount||0):0;c.pressSeasonYear=state.career.year;
+      if(c.pressSeasonCount>=6)return null;
+      var kind=mine>opp?'win':'loss'; if(game.rivalry)kind='rivalry';else if(mine>opp&&oppTeam&&myTeam&&oppTeam.prestige-myTeam.prestige>=3)kind='upset';else if(state.season.record.wins>=8&&mine>opp)kind='streak';else if(state.season.record.losses>=5)kind='hotseat';
+      var meaningful=game.rivalry||kind==='upset'||kind==='streak'||kind==='hotseat'||state.season.week===1||state.season.week>=12;if(!meaningful)return null;c.pressSeasonCount++;
       c.pendingPress={kind:kind,week:state.season.week};return PRESSERS[kind];
     },
     pending:function(state){var c=ensure(state);return c.pendingPress?PRESSERS[c.pendingPress.kind]:null;},

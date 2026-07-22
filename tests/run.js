@@ -1130,7 +1130,7 @@ function serve() {
     ['fbs','fcs','d2','d3'].forEach(d => out.counts[d]=T.byDivision(d).length);
     E.newCareer({id:'long',name:'Avery Stone',source:'custom',ratings:{recruiting:72,offense:74,defense:71,development:76,discipline:70,motivation:75,media:68}},T.byDivision('d3')[0]);
     E.state.settings.scandalIntensity='off';
-    E.state.career.reputation=90;E.state.career.coachingAbility=90;E.state.career.nameRecognition=90;E.state.career.fame=75;
+    E.state.career.reputation=90;E.state.career.coachingAbility=90;E.state.career.nameRecognition=90;E.state.career.fame=75;E.state.career.seasonsCoached=3;E.state.career.jobs[0].startYear=2023;
     out.promotion=C.generateOffers(E.state,{wins:12,losses:1,wonConf:true,wonNatl:true}).some(o=>T.get(o.teamId).div==='d2');
     E.state.jobOffers=[];
     S.start(E.state);
@@ -1144,8 +1144,8 @@ function serve() {
     out.stats=E.state.roster.some(p=>p.stats&&p.stats.seasons&&p.stats.seasons[String(E.state.career.year)]&&p.stats.seasons[String(E.state.career.year)].games>0);
     out.awards=Array.isArray(sum.playerAwards);out.worldNews=Array.isArray(E.state.world.news)&&E.state.world.news.length>0;
     P.signingDay(E.state);P.beginOffseason(E.state);C.stay(E.state,sum.wins);
-    for(let y=0;y<7;y++){S.start(E.state);while(E.state.season.phase==='regular')S.simWeek(E.state);S.playConfChamps(E.state);S.playPostseason(E.state);sum=S.finish(E.state);P.signingDay(E.state);P.beginOffseason(E.state);C.stay(E.state,sum.wins);}
-    out.longYear=E.state.career.year;out.history=E.state.history.length;out.realign=E.state.world.realignment.length;
+    for(let y=0;y<19;y++){S.start(E.state);while(E.state.season.phase==='regular'){S.simWeek(E.state);let pr=window.GameStory.pending(E.state);if(pr)window.GameStory.resolvePress(E.state,pr.options[0].id);}S.playConfChamps(E.state);S.playPostseason(E.state);sum=S.finish(E.state);P.signingDay(E.state);P.beginOffseason(E.state);C.stay(E.state,sum.wins);}
+    out.longYear=E.state.career.year;out.history=E.state.history.length;out.realign=E.state.world.realignment.length;out.press=E.state.career.pressHistory.length;out.retire=E.state.career.retirementEligible;out.hof=C.hallOfFameStatus(E.state).tier;out.objectives=E.state.history.every(h=>Array.isArray(h.objectives));
     out.crest=window.GameCrests.render(T.byDivision('d3')[0],36).tagName.toLowerCase()==='svg';
     return out;
   });
@@ -1155,7 +1155,9 @@ function serve() {
   ok(v2.plan === 'airRaid' && v2.planApplied, 'weekly game plans change team configuration');
   ok(v2.stats && v2.awards, 'player statistics and award evaluation survive a season');
   ok(v2.worldNews, 'season results create living-world headlines');
-  ok(v2.history === 8 && v2.longYear >= 2033, 'an eight-season lower-division dynasty completes without corruption');
+  ok(v2.history === 20 && v2.longYear >= 2045, 'a twenty-season dynasty completes without corruption');
+  ok(v2.press <= 120, 'situational press conferences stay below six per season (' + v2.press + ')');
+  ok(v2.retire && v2.hof && v2.objectives, 'retirement, Hall of Fame, and dynamic objectives mature across a full career');
   ok(v2.realign >= 1, 'conference realignment evolves during a long dynasty');
   ok(v2.crest, 'original generated team crests render as SVG');
 
@@ -1207,10 +1209,10 @@ function serve() {
   group('No runtime errors');
   const releaseUpdate = await page.evaluate(async () => {
     const [sw, pwa] = await Promise.all([fetch('/sw.js').then(r => r.text()), fetch('/js/pwa.js').then(r => r.text())]);
-    return { immediate: sw.includes('self.skipWaiting();'), cache: sw.includes('gridiron-dynasty-v28-coach-identities'), genericNotice: pwa.includes('New Gridiron Dynasty release installed') };
+    return { immediate: sw.includes('self.skipWaiting();'), cache: sw.includes('gridiron-dynasty-v29-career-longevity'), genericNotice: pwa.includes('New Gridiron Dynasty release installed') };
   });
   ok(releaseUpdate.immediate, 'service worker activates releases immediately');
-  ok(releaseUpdate.cache, 'latest v28 cache name is shipped');
+  ok(releaseUpdate.cache, 'latest v29 cache name is shipped');
   ok(releaseUpdate.genericNotice, 'PWA update message is release-agnostic');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));
 

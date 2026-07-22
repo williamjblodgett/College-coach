@@ -234,7 +234,7 @@
         el('span', { text: '🏈 4 divisions' }), el('span', { text: '🧑‍💼 assistant-to-legend careers' }),
         el('span', { text: '🌎 evolving worlds' }), el('span', { text: '📴 offline PWA' })
       ]),
-      el('p', { class: 'title-foot', text: 'v2.8 · Coach Identities · ' + T.all().length + ' playable programs' })
+      el('p', { class: 'title-foot', text: 'v2.9 · Career Longevity · ' + T.all().length + ' playable programs' })
     ]);
     mount(card);
   }
@@ -702,8 +702,8 @@
 
     var stats = el('div', { class: 'stat-grid' }, [
       stat('Roster OVR', power, rr ? ('OFF ' + rr.off + ' · DEF ' + rr.def) : 'prestige'),
-      stat('Coach Level', s.career.coachLevel, 'ability ' + s.career.coachingAbility),
-      stat('Recognition', s.career.nameRecognition, 'job market'),
+      stat('Coach Level', s.career.coachLevel, (s.career.careerPhase||'Rising Coach')+' · age '+(s.career.age||32)),
+      stat('Recognition', s.career.nameRecognition, 'regional '+(s.career.regionalRecognition||s.career.nameRecognition)+' · national '+(s.career.nationalRecognition||0)),
       stat('Fame', s.career.fame, window.GameCareer ? window.GameCareer.fameLabel(s.career.fame) : 'career'),
       stat('Reputation', s.career.reputation, 'career'),
       stat('Record', s.career.wins + '–' + s.career.losses, 'all-time'),
@@ -756,6 +756,8 @@
         : el('p', { class: 'muted', text: 'Set your program on the field: 12-game slate, weekly sims, the AP Top 25, conference title races, and a 12-team Playoff.' }),
       lastYear ? el('p', { class: 'muted', text: 'Last season (' + lastYear.year + '): ' + lastYear.wins + '–' + lastYear.losses +
         (lastYear.wonNatl ? ' · 🏆 National Champions' : (lastYear.wonConf ? ' · 🥇 Conference Champions' : (lastYear.finalRank ? ' · #' + lastYear.finalRank + ' final' : ''))) }) : null,
+      inProgress&&s.season.objectives&&s.season.objectives.length?el('div',{class:'objective-list'},[el('h4',{text:'Athletic Director Objectives'})].concat(s.season.objectives.map(function(o){return el('div',{class:'news-row'},[el('span',{text:o.complete?'✓':'○'}),el('span',{text:o.label}),el('span',{class:'muted',text:(o.reward>0?'+':'')+o.reward+' trust'})]);}))):null,
+      s.program.offseasonReport?el('p',{class:'muted',text:'Last offseason: roster '+s.program.offseasonReport.before+' → '+s.program.offseasonReport.after+' · '+s.program.offseasonReport.recruits+' recruits · '+s.program.offseasonReport.graduates+' graduates · '+s.program.offseasonReport.transfers+' transfers'}):null,
       el('div', { class: 'btn-row' }, [
         btn(seasonCtaLabel, 'primary', function () {
           Season.ensureStarted(s);
@@ -872,6 +874,7 @@
 
   function renderCoachRankings() {
     var s=E.state,C=window.GameCareer,rows=C.allTimeRankings(s),mine=rows.filter(function(r){return r.player;})[0];
+    var hof=C.hallOfFameStatus(s),tree=s.career.coachingTree||[];
     applyTheme(T.get(s.team.id));
     var screen=el('div',{class:'screen rankings-screen'},[
       el('div',{class:'legacy-hero'},[
@@ -885,6 +888,10 @@
         el('span',{class:'coach-rank-name'},[el('strong',{text:r.name}),el('small',{text:r.player?' Your active dynasty':' Historic résumé'})]),
         el('span',{class:'coach-rank-stat',text:r.wins+' W'}),el('span',{class:'coach-rank-stat',text:r.titles+' titles'}),el('span',{class:'coach-rank-score',text:r.score})
       ]);})),
+      el('div',{class:'panel-grid'},[
+        el('div',{class:'panel'},[el('h3',{text:'Hall of Fame Forecast'}),el('div',{class:'card-title',text:hof.tier+' · '+hof.score+' points'}),el('p',{class:'muted',text:hof.eligible?'You may retire and submit your final résumé.':'Eligibility begins after 20 seasons or age 65.'}),hof.eligible&&!s.career.retired?btn('Retire & Enter Hall of Fame','primary',function(){C.retire(s);E.save();renderCoachRankings();}):null]),
+        el('div',{class:'panel'},[el('h3',{text:'Coaching Tree · '+tree.length})].concat(tree.length?tree.slice(-8).reverse().map(function(x){var t=T.get(x.teamId);return el('div',{class:'news-row'},[el('span',{text:x.name}),el('span',{class:'muted',text:(t?t.name:'New program')+' · '+x.year})]);}):[el('p',{class:'muted',text:'Develop elite assistants; their promotions become part of your legacy.'})]))
+      ]),
       el('p',{class:'muted ranking-note',text:'The GOAT index is an in-game comparison metric, not an official historical ranking.'}),
       el('div',{class:'sticky-footer'},[el('div',{class:'sf-info'},[el('span',{text:'Next target: '+(rows[mine.rank-2] ? rows[mine.rank-2].name : 'You lead the pantheon')})]),el('div',{class:'sf-actions'},[btn('← Back to HQ','primary',renderHQ)])])
     ]);mount(screen);
@@ -897,6 +904,8 @@
       el('div',{class:'case-file-head'},[el('span',{class:'sc-flag',text:(closed?'CLOSED':'ACTIVE')+' · '+c.category}),el('span',{class:'scrutiny '+(c.verdict&&c.verdict.severity==='severe'?'bad':'ok'),text:closed?(c.verdict&&c.verdict.severity||'cleared'):c.stage})]),
       el('div',{class:'card-title',text:c.title}),
       el('p',{class:'muted',text:'Opened '+c.openedYear+' · Week '+c.openedWeek+' · Evidence '+c.evidence+' · '+(c.choices||[]).length+' recorded decisions'}),
+      !closed?el('p',{class:'muted',text:'Resolution deadline: '+(c.deadlineYear||c.openedYear+2)+' · Next action '+(c.nextYear||c.openedYear)+' Week '+(c.nextWeek||1)}):null,
+      c.timeline&&c.timeline.length?el('div',{class:'case-timeline'},c.timeline.slice(-4).map(function(x){return el('div',{class:'vb-item',text:x.year+' W'+x.week+' · '+x.event});})):null,
       c.verdict&&c.verdict.sanctions?el('div',{class:'sanction-list'},c.verdict.sanctions.map(function(x){return el('div',{class:'sanction-item',text:x});})):null
     ]);}
     var screen=el('div',{class:'screen cases-screen'},[
@@ -1885,7 +1894,7 @@
     function draw() {
       var walletBar = el('div', { class: 'store-wallet' }, [
         el('span', { class: 'sw-amt', text: '💰 $' + (s.career.wallet || 0).toFixed(1) + 'M' }),
-        el('span', { class: 'sw-sub muted', text: 'available · $' + (s.career.spent || 0).toFixed(1) + 'M spent all-time' })
+        el('span', { class: 'sw-sub muted', text: 'available · $' + (s.career.spent || 0).toFixed(1) + 'M invested · $' + ((s.career.finances&&s.career.finances.expenses)||0).toFixed(1) + 'M career expenses' })
       ]);
 
       var categoryTabs = el('div', { class: 'tabs store-tabs' }, cats.map(function (cat) {
@@ -1960,7 +1969,7 @@
       return el('div', { class: 'offer-card carousel-offer' }, [
         teamBadge(t, 40),
         el('div', { class: 'co-body' }, [
-          el('div', { class: 'card-title', text: t.name + ' ' + t.nick }),
+          el('div', { class: 'card-title', text: (o.opportunity ? o.opportunity + ' · ' : '') + t.name + ' ' + t.nick }),
           el('div', { class: 'card-sub', text: t.conf + ' · prestige ' + t.prestige + '/10 · $' + o.salary + 'M/yr' }),
           el('div', { class: 'co-pitch muted', text: o.pitch + ' Candidate threshold: ' + (o.requiredProfile || C.requiredProfile(t.prestige)) + '.' })
         ]),

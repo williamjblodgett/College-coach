@@ -245,6 +245,12 @@
       s.totalRegWeeks = TOTAL_REG_WEEKS;
       s.postseason = { confChamps: {}, confGames: [], cfpSeeds: [], bracket: [], bowls: [], champion: null };
       s.record = { wins: 0, losses: 0, confWins: 0, confLosses: 0 };
+      var myTeam=T.get(state.team.id)||{prestige:5},expected=clamp(Math.round(myTeam.prestige*.9+1),3,11);
+      s.objectives=[
+        {id:'floor',label:'Win at least '+expected+' games',target:expected,reward:2,complete:false},
+        {id:'rival',label:(myTeam.rivals&&myTeam.rivals.length?'Beat a rival':'Finish with a winning record'),reward:3,complete:false},
+        {id:'legacy',label:myTeam.prestige>=8?'Reach the College Football Playoff':'Outperform expectations by 3 wins',target:expected+3,reward:5,complete:false}
+      ];
       s.started = true;
       if (window.GameFootball) window.GameFootball.onSeasonStart(state);
       if (window.GameScandal) window.GameScandal.onSeasonStart(state);
@@ -638,6 +644,10 @@
         postseasonBanned: !!s.postseason.playerBanned,
         playerAwards: playerAwards
       };
+      var rivalWin=s.schedule.some(function(g){return g.rivalry&&g.played&&g.winner===id;});
+      (s.objectives||[]).forEach(function(o){if(o.id==='floor')o.complete=rec.wins>=o.target;else if(o.id==='rival')o.complete=(team.rivals&&team.rivals.length)?rivalWin:rec.wins>rec.losses;else o.complete=team.prestige>=8?madePlayoff:rec.wins>=o.target;});
+      summary.objectives=(s.objectives||[]).map(function(o){return {id:o.id,label:o.label,complete:o.complete,reward:o.reward};});summary.objectivesMet=summary.objectives.filter(function(o){return o.complete;}).length;
+      var objectiveDelta=summary.objectives.reduce(function(n,o){return n+(o.complete?o.reward:-Math.ceil(o.reward/2));},0);state.integrity.adTrust=clamp(state.integrity.adTrust+objectiveDelta,0,100);summary.objectiveTrustDelta=objectiveDelta;
 
       // Coaching progression is earned before the carousel evaluates candidates.
       if (window.GameCareer) window.GameCareer.progressSeason(state, summary);

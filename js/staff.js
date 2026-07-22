@@ -142,7 +142,9 @@
         // promotions elsewhere.
         var leaveP = (m.overall / 100) * (m.ambition / 100) * (1 - m.loyalty / 100) * 0.9;
         if (m.overall >= 78 && rng() < leaveP) {
-          poached.push({ name: m.name, role: r.id, overall: m.overall });
+          var treePool=T.all().filter(function(x){return (x.prestige||5)<=Math.min(9,team.prestige+1)&&x.id!==state.team.id;}),landing=treePool[Math.floor(rng()*treePool.length)]||team;
+          var branch={name:m.name,role:r.id,overall:m.overall,year:state.career.year,teamId:landing.id,wins:0,titles:0};
+          poached.push(branch);state.career.coachingTree=state.career.coachingTree||[];state.career.coachingTree.push(branch);
           state.staff[r.id] = makeMember(rng, r.id, Math.max(2, team.prestige - 2), -6); // interim hire
         }
       });

@@ -230,6 +230,7 @@
       if (ev.once) i.seenEvents.push(ev.id);
       var outcome = GameScandal.applyEffects(state, opt.fx || {});
       if (opt.risky) i.riskyThisSeason = (i.riskyThisSeason || 0) + 1;
+      state.career.scandalNetwork=state.career.scandalNetwork||{};var actor=ev.category||'Compliance';var rel=state.career.scandalNetwork[actor]||(state.career.scandalNetwork[actor]={trust:50,favors:0,exposure:0,lastYear:state.career.year});rel.lastYear=state.career.year;if(opt.risky){rel.favors++;rel.trust=clamp(rel.trust+5,0,100);rel.exposure=clamp(rel.exposure+12,0,100);}else{rel.trust=clamp(rel.trust-2,0,100);rel.exposure=clamp(rel.exposure-5,0,100);}
       i.allegations.push({ year: state.career.year, event: ev.id, choice: opt.id, tag: (opt.fx && opt.fx.tag) || '', risky: !!opt.risky });
       if (window.GameCases) window.GameCases.onScandalChoice(state, ev, opt, outcome);
       i.latestOutcome = { title: ev.title, choice: opt.label, risky: !!opt.risky, effects: outcome, year: state.career.year, week: state.season.week };

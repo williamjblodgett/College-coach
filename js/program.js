@@ -342,7 +342,7 @@
       // elite class and a big solid class land in a similar-but-distinct range.
       var pts = { 5: 28, 4: 17, 3: 8, 2: 3 };
       var score = signed.reduce(function (s, p) { return s + (pts[p.stars] || 0) + (p.proj - 60) * 0.1; }, 0);
-      return { count: signed.length, byStar: byStar, score: Math.round(clamp(score, 0, 100)) };
+      return { count: signed.length, byStar: byStar, score: Math.round(score), tier: score>=180?'Elite':score>=120?'Top 10':score>=75?'Top 25':score>=40?'Solid':'Developmental' };
     },
 
     // ---- offseason: budget, portal, attrition -----------------------------
@@ -413,6 +413,7 @@
 
     // ---- rollover: develop, graduate, integrate class ---------------------
     developAndRollover: function (state) {
+      var before=GameProgram.rosterRatings(state),graduates=state.roster.filter(function(p){return p.year==='SR';}).length,transfers=(state.program.departures||[]).length;
       var rng = E.makeRng((state.seed ^ (state.career.year * 2246822519)) >>> 0);
       var c = state.coach.ratings || {};
       var fac = state.program.facilitiesLevel;
@@ -448,6 +449,9 @@
       });
       state.roster = kept;
       GameProgram.markStarters(state.roster);
+      var after=GameProgram.rosterRatings(state),signed=(state.program.signedClass||[]).length;
+      state.program.offseasonReport={year:state.career.year,before:before.overall,after:after.overall,graduates:graduates,transfers:transfers,recruits:signed,delta:after.overall-before.overall};
+      state.program.classHistory=state.program.classHistory||[];state.program.classHistory.push({year:state.career.year,count:signed,score:GameProgram.classSummary(state.program.signedClass||[]).score});state.program.classHistory=state.program.classHistory.slice(-20);
       return state.roster;
     },
 

@@ -149,6 +149,9 @@
         wallet: 0,                // personal money ($M) accumulated from salary (wave 7)
         spent: 0,                 // lifetime personal spending ($M)
         purchases: []             // owned store items (wave 8)
+        ,age: 32, regionalRecognition: 25, nationalRecognition: 5,
+        careerPhase: 'Rising Coach', coachingTree: [], retirementEligible: false,
+        finances: { expenses: 0, agentFees: 0 }, hallOfFame: null
       },
       // Current coaching contract (wave 7).
       contract: { salary: 0, years: 0, yearsLeft: 0, buyout: 0 },
@@ -169,6 +172,7 @@
           confChamps: {}, confGames: [], cfpSeeds: [], bracket: [], bowls: [], champion: null
         },
         gamePlan: 'balanced',
+        objectives: [],
         record: { wins: 0, losses: 0, confWins: 0, confLosses: 0 }
       },
       roster: [],                 // player objects (wave 4): {id,name,pos,group,year,stars,ovr,pot,dev}
@@ -191,6 +195,7 @@
         signedClass: [],          // most recent signed class (for the cutscene)
         draftClass: [],           // players departing for the pro draft
         staffBudget: 0            // points for hiring assistants (wave 5)
+        ,offseasonReport: null, classHistory: []
       },
       // Coaching staff cabinet + hiring market (wave 5).
       staff: {},                  // role id -> staff member object

@@ -55,6 +55,9 @@
     { id: 'statue', name: 'Commission a Statue', cat: 'Legacy', cost: 8, emoji: '🗿', desc: 'Bronze, outside the stadium. Immortality (+big legacy).', effect: { legacy: 60, reputation: 4 }, once: true },
     { id: 'trophyroom', name: 'Interactive Trophy Room', cat: 'Legacy', cost: 5, emoji: '🏆', desc: 'Turn every title and award into a recruiting destination.', effect: { legacy: 35, recruiting: 3 }, once: true },
     { id: 'coachingacademy', name: 'Coaching Academy', cat: 'Legacy', cost: 6, emoji: '🎓', desc: 'Teach the next generation and grow your coaching tree.', effect: { legacy: 45, ability: 2 }, once: true },
+    { id: 'legacycenter', name: 'Program Legacy Center', cat: 'Legacy', cost: 18, emoji: '🏛️', desc: 'A permanent museum for championships, records, and players.', effect: { legacy: 110, recruiting: 5 }, once: true },
+    { id: 'endowedstaff', name: 'Endowed Coaching Fellowship', cat: 'Legacy', cost: 25, emoji: '📚', desc: 'Fund future assistants and permanently strengthen your coaching tree.', effect: { legacy: 140, development: 1 }, once: true },
+    { id: 'stadiumwing', name: 'Stadium Championship Wing', cat: 'Legacy', cost: 40, emoji: '🏟️', desc: 'A late-career monument visible to every recruit and fan.', effect: { legacy: 220, recognition: 8 }, once: true },
     { id: 'lakehouse', name: 'Lake House', cat: 'Lifestyle', cost: 2, emoji: '🏡', desc: 'Somewhere to recharge in the offseason.', effect: { legacy: 5 }, once: true },
     { id: 'luxurycar', name: 'Luxury Sports Car', cat: 'Lifestyle', cost: 0.4, emoji: '🏎️', desc: 'Arrive in style.', effect: {}, once: true },
     { id: 'yacht', name: 'Yacht', cat: 'Lifestyle', cost: 7, emoji: '🛥️', desc: 'The ultimate flex.', effect: { legacy: 8 }, once: true },
@@ -124,11 +127,14 @@
       c.coachingAbility = clamp((c.coachingAbility || 50) + Math.max(0, levels) + (over >= 4 ? 1 : 0), 20, 99);
       // Completing seasons and outperforming expectations builds durable
       // professional credibility even before a marquee title arrives.
-      c.reputation = clamp((c.reputation == null ? 50 : c.reputation) + 2 + Math.max(0, over) + Math.max(0, levels) * 2, 0, 100);
-      c.nameRecognition = clamp((c.nameRecognition || 10) + Math.max(-3, over) +
-        (summary.wonConf ? 6 : 0) + (summary.madePlayoff ? 7 : 0) + (summary.wonNatl ? 12 : 0), 0, 100);
-      c.fame = clamp((c.fame || 5) + Math.max(-2, Math.round(over / 2)) +
-        (summary.wonConf ? 4 : 0) + (summary.madePlayoff ? 6 : 0) + (summary.wonNatl ? 15 : 0), 0, 100);
+      function diminish(value,gain){return gain<=0?gain:gain*(1-value/112);}
+      var repGain=1+over*.65+(summary.wonConf?4:0)+(summary.wonNatl?9:0);
+      c.reputation=clamp(Math.round((c.reputation==null?50:c.reputation)+diminish(c.reputation||50,repGain)),0,100);
+      c.regionalRecognition=clamp(Math.round((c.regionalRecognition||20)+diminish(c.regionalRecognition||20,Math.max(-3,over)+(summary.wonConf?5:0))),0,100);
+      c.nationalRecognition=clamp(Math.round((c.nationalRecognition||5)+diminish(c.nationalRecognition||5,(summary.madePlayoff?6:0)+(summary.wonNatl?14:0)+(summary.finalRank&&summary.finalRank<=15?2:-1))),0,100);
+      c.nameRecognition=Math.round(c.regionalRecognition*.55+c.nationalRecognition*.45);
+      c.fame=clamp(Math.round((c.fame||5)+diminish(c.fame||5,(summary.wonConf?2:0)+(summary.madePlayoff?4:0)+(summary.wonNatl?10:0)+(over<0?-2:0))),0,100);
+      c.age=(c.age||32)+1;c.careerPhase=c.seasonsCoached<4?'Rising Coach':c.seasonsCoached<10?'Program Builder':c.seasonsCoached<17?'National Figure':'Veteran Legend';c.retirementEligible=c.seasonsCoached>=20||c.age>=65;
       summary.coachXp = xp;
       summary.coachLevel = c.coachLevel;
       summary.coachingAbility = c.coachingAbility;
@@ -154,7 +160,9 @@
       var c = state.contract || {};
       var interest = GameCareer.storeEffects(state).walletInterest; // financial advisor
       var pay = (c.salary || 0) * (1 + interest);
-      state.career.wallet = Math.round((state.career.wallet + pay) * 10) / 10;
+      var expenses=Math.round(((c.salary||0)*.08+.15+(state.career.purchases||[]).length*.035)*10)/10;
+      state.career.wallet = Math.round(Math.max(0,state.career.wallet + pay-expenses) * 10) / 10;
+      state.career.finances=state.career.finances||{};state.career.finances.expenses=(state.career.finances.expenses||0)+expenses;state.career.finances.agentFees=Math.round((pay*.03)*10)/10;
       if (c.yearsLeft > 0) c.yearsLeft--;
       return pay;
     },
@@ -181,6 +189,7 @@
       var wins = summary ? summary.wins : 6;
       var expected = clamp(Math.round(cur.prestige * 0.9 + 1), 3, 11);
       var over = wins - expected;
+      var job=state.career.jobs[state.career.jobs.length-1]||{},tenure=Math.max(1,state.career.year-(job.startYear||state.career.year)+1),seasons=state.career.seasonsCoached||0;
       var rng = E.makeRng((state.seed ^ (state.career.year * 0x1abcf) ^ Math.round(rep)) >>> 0);
 
       // Interest is a function of reputation + overperformance + titles (a
@@ -195,16 +204,18 @@
 
       var curDiv = cur.div || 'fbs', curTier = divisionTier(curDiv);
       var pool = T.all().filter(function (t) {
-        var tier = divisionTier(t.div), nextDivision = tier === curTier + 1;
+        var tier = divisionTier(t.div), nextDivision = tier === curTier + 1 && tenure>=2 && seasons>=3 && (summary.wonConf||summary.madePlayoff);
+        var legacyChallenge=state.career.retirementEligible&&tier<=curTier&&t.prestige<=Math.max(6,cur.prestige-2);
         var sameDivision = tier === curTier && t.prestige >= floor && t.prestige <= ceil && t.prestige > cur.prestige - 1;
         var required = GameCareer.requiredProfile(t.prestige, t.div);
-        return t.id !== state.team.id && (sameDivision || nextDivision) && profile >= required;
+        var eliteGate=t.prestige<9||seasons>=9||state.career.natTitles>0;
+        return t.id !== state.team.id && (sameDivision || nextDivision || legacyChallenge) && profile >= required && eliteGate;
       });
       // Prefer bigger jobs; shuffle within.
       for (var i = pool.length - 1; i > 0; i--) { var j = Math.floor(rng() * (i + 1)); var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp; }
       pool.sort(function (a, b) { return divisionTier(b.div) - divisionTier(a.div) || b.prestige - a.prestige; });
 
-      var n = clamp(Math.round(interest / 22), 0, 4);
+      var n = cur.prestige>=9?Math.min(1,clamp(Math.round(interest/28),0,3)):clamp(Math.round(interest / 28), 0, 3);
       var offers = pool.slice(0, n).map(function (t) {
         var years = 5 + Math.round(t.prestige / 5);
         var sal = salaryFor(t.prestige, rep);
@@ -213,7 +224,7 @@
           role: 'headCoach',
           requiredProfile: GameCareer.requiredProfile(t.prestige, t.div), profileScore: profile,
           salary: sal, years: years, buyout: Math.round(sal * years * 0.5 * 10) / 10,
-          pitch: GameCareer.pitch(t, cur)
+          pitch: GameCareer.pitch(t, cur), opportunity: divisionTier(t.div)>divisionTier(cur.div)?'Promotion':t.prestige<cur.prestige?'Legacy Rebuild':t.prestige>=9?'Blue-Blood Pressure':'Program Builder'
         };
       });
       state.jobOffers = offers;
@@ -229,6 +240,9 @@
     },
 
     hasOffers: function (state) { return (state.jobOffers || []).length > 0; },
+
+    hallOfFameStatus:function(state){var c=state.career,score=(c.wins||0)*.22+(c.confTitles||0)*8+(c.natTitles||0)*35+(c.legacyPoints||0)*.08+(c.coachingTree||[]).length*2-(c.caseCloud||0)*8;var tier=score>=120?'First-ballot legend':score>=85?'Hall of Fame lock':score>=55?'On the ballot':'Building the résumé';return {score:Math.round(score),tier:tier,eligible:!!c.retirementEligible};},
+    retire:function(state){var h=GameCareer.hallOfFameStatus(state);if(!h.eligible)return {ok:false,reason:'Retirement becomes available after 20 seasons or age 65.'};state.career.hallOfFame=h;state.career.retired=true;state.screen='hq';return {ok:true,hallOfFame:h};},
 
     // Stay at the current job: develop the roster + advance a year.
     stay: function (state, lastWins) {
