@@ -142,12 +142,20 @@
     pick = { team: null, coachTab: 'real', build: null };
     var hasSave = E.hasSave();
     var card = el('div', { class: 'screen title-screen' }, [
-      el('div', { class: 'title-mark' }, [
+      el('div', { class: 'title-hero-card' }, [
+        el('div', { class: 'title-kicker', text: 'THE COMPLETE COLLEGE FOOTBALL UNIVERSE' }),
+        el('div', { class: 'title-mark' }, [
         el('div', { class: 'title-emoji', text: '🏈' }),
         el('h1', { class: 'title-name', text: 'GRIDIRON DYNASTY' }),
-        el('p', { class: 'title-sub', text: 'College Football Head-Coaching Career Sim' })
+        el('p', { class: 'title-sub', text: 'Recruit. Scheme. Survive the spotlight. Build a legacy.' })
+        ]),
+        el('div', { class: 'title-metrics' }, [
+          el('div', { class: 'title-metric' }, [el('strong', { text: T.all().length }), el('span', { text: 'Programs' })]),
+          el('div', { class: 'title-metric' }, [el('strong', { text: '4' }), el('span', { text: 'Divisions' })]),
+          el('div', { class: 'title-metric' }, [el('strong', { text: '∞' }), el('span', { text: 'Dynasties' })])
+        ])
       ]),
-      el('div', { class: 'title-actions' }, [
+      el('div', { class: 'title-actions title-actions-primary' }, [
         hasSave ? btn('▶  Continue Career', 'primary big', function () {
           E.load(); GameUI.render();
         }) : null,
@@ -155,6 +163,8 @@
           if (hasSave && !confirm('Start a new career? Your current save will be replaced when you finish setup.')) return;
           renderTeamSelect();
         }),
+      ]),
+      el('div', { class: 'title-utility' }, [
         btn('Import Save', 'ghost', importSave),
         window.GameSaves ? btn('Dynasty Slots', 'ghost', renderSaveSlots) : null,
         window.GamePWA && !window.matchMedia('(display-mode: standalone)').matches ? btn('Install App', 'ghost', function () {
@@ -166,7 +176,7 @@
         el('span', { text: '🏈 4 divisions' }), el('span', { text: '🧑‍💼 assistant-to-legend careers' }),
         el('span', { text: '🌎 evolving worlds' }), el('span', { text: '📴 offline PWA' })
       ]),
-      el('p', { class: 'title-foot', text: 'v2.3 · Complete Program Universe · ' + T.all().length + ' playable programs' })
+      el('p', { class: 'title-foot', text: 'v2.4 · Command Center UI · ' + T.all().length + ' playable programs' })
     ]);
     mount(card);
   }
@@ -224,7 +234,8 @@
 
   // ---- Screen: Team Select -------------------------------------------------
   function renderTeamSelect() {
-    var state = { division: pick.division || 'fbs', conf: 'All', q: '', bottom: pick.startBottom || false, limit: 72 };
+    var state = pick.teamFilters || { division: pick.division || 'fbs', conf: 'All', q: '', bottom: pick.startBottom || false, limit: 72 };
+    pick.teamFilters = state;
     var confs = T.conferences(state.division);
 
     var list = el('div', { class: 'grid team-grid' });
@@ -251,11 +262,15 @@
         var stars = '★'.repeat(Math.round(t.prestige / 2)) + '☆'.repeat(5 - Math.round(t.prestige / 2));
         list.appendChild(el('button', {
           class: 'card team-card' + (pick.team && pick.team.id === t.id ? ' selected' : ''),
+          style: '--card-primary:' + t.colors[0] + ';--card-secondary:' + t.colors[1] + ';',
           onclick: function () { pick.team = t; renderTeamSelect(); }
         }, [
           teamBadge(t, 40),
           el('div', { class: 'card-body' }, [
-            el('div', { class: 'card-title', text: t.name }),
+            el('div', { class: 'team-card-head' }, [
+              el('div', { class: 'card-title', text: t.name }),
+              el('span', { class: 'team-tier', text: T.DIVISION_LABEL[t.div] })
+            ]),
             el('div', { class: 'card-sub', text: t.nick + ' · ' + t.conf }),
             el('div', { class: 'card-meta', text: t.city + ', ' + t.st }),
             el('div', { class: 'card-stars', text: stars, title: 'Prestige ' + t.prestige + '/10' })
@@ -267,8 +282,9 @@
     var confSel = el('select', { class: 'select', onchange: function (e) { state.conf = e.target.value; state.limit = 72; refresh(); } },
       [el('option', { value: 'All', text: 'All Conferences' })].concat(
         confs.map(function (c) { return el('option', { value: c, text: c }); })));
+    confSel.value = state.conf;
 
-    var search = el('input', { class: 'input', type: 'search', placeholder: 'Search team, mascot, city…',
+    var search = el('input', { class: 'input', type: 'search', value: state.q, placeholder: 'Search all programs…',
       oninput: function (e) { state.q = e.target.value; state.limit = 72; refresh(); } });
 
     var footer = el('div', { class: 'sticky-footer' }, [
@@ -299,8 +315,8 @@
       ['fbs','FBS'],['fcs','FCS'],['d2','Division II'],['d3','Division III']
     ].map(function (d) {
       return el('button', { class: 'chip' + (state.division === d[0] ? ' active' : ''), onclick: function () {
-        pick.division = d[0]; pick.team = null; renderTeamSelect();
-      } }, [d[1]]);
+        pick.division = d[0]; pick.team = null; pick.teamFilters = { division: d[0], conf: 'All', q: '', bottom: state.bottom, limit: 72 }; renderTeamSelect();
+      } }, [el('span', { text: d[1] }), el('small', { text: T.byDivision(d[0]).length })]);
     }));
 
     var screen = el('div', { class: 'screen' }, [
@@ -308,8 +324,7 @@
         el('h2', { text: 'Choose Your Program' }),
         el('p', { class: 'muted', text: 'Pick a blue-blood and win now, or start at a bottom-tier program and climb the carousel.' })
       ]),
-      divisionToggle, modeToggle,
-      el('div', { class: 'toolbar' }, [confSel, search, subtitle]),
+      el('div', { class: 'program-controls' }, [divisionToggle, modeToggle, el('div', { class: 'toolbar' }, [confSel, search, subtitle])]),
       list, moreWrap, footer
     ]);
     mount(screen);
@@ -589,6 +604,18 @@
 
     applyTheme(team);
 
+    var commandBar = el('nav', { class: 'command-bar', 'aria-label': 'Dynasty navigation' }, [
+      el('div', { class: 'command-brand' }, [teamBadge(team, 38), el('div', {}, [
+        el('strong', { text: team.name }), el('span', { text: s.career.year + ' · ' + (window.GameStory ? window.GameStory.roleLabel(s.career.role) : 'Head Coach') })
+      ])]),
+      el('div', { class: 'command-links' }, [
+        btn('Roster', 'ghost', function () { renderRoster('hq'); }),
+        btn('Staff', 'ghost', function () { renderStaff('hq'); }),
+        window.GameWorld ? btn('News', 'ghost', renderNewsroom) : null,
+        window.GameScandal ? btn('Settings', 'ghost', renderSettings) : null
+      ])
+    ]);
+
     var hero = el('div', { class: 'hq-hero', style:
       'background:linear-gradient(135deg,' + team.colors[0] + ',' + shade(team.colors[0], -30) + ');' +
       'color:' + readable(team.colors[0]) + ';' }, [
@@ -734,7 +761,7 @@
     }
 
     var screen = el('div', { class: 'screen hq' }, [
-      hero, stats, contractBar,
+      commandBar, hero, stats, contractBar,
       el('div', { class: 'panel-grid' }, [coachPanel, rivalPanel]),
       compliancePanel, nextPanel
     ]);

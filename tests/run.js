@@ -243,6 +243,8 @@ function serve() {
   const filtered = await page.evaluate(() => document.querySelectorAll('.team-card').length);
   ok(filtered >= 1 && filtered < 10, 'search filters team list (got ' + filtered + ')');
   await page.click('.team-card:has-text("FIU")');
+  eq(await page.inputValue('.input[type="search"]'), 'FIU', 'team selection preserves the active search');
+  eq(await page.locator('.team-card').count(), 1, 'team selection preserves filtered results');
   await page.click('button:has-text("Next: Choose Coach")');
 
   // Coach select — real tab
@@ -270,6 +272,7 @@ function serve() {
     saved: window.GameEngine.hasSave()
   }));
   ok(/FIU/.test(hq.team), 'HQ shows chosen team (' + hq.team + ')');
+  ok(await page.isVisible('.command-bar'), 'HQ renders the persistent command-center navigation');
   ok(/Riley Vance/.test(hq.coach), 'HQ shows created coach (' + hq.coach + ')');
   eq(hq.stateCoach, 'Coach Riley Vance', 'state has created coach');
   eq(hq.stateTeam, 'fiu', 'state has chosen team');
