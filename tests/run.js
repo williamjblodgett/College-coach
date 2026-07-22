@@ -84,6 +84,50 @@ function serve() {
   eq(data.danglingRivals.length, 0, 'all rival ids resolve: ' + data.danglingRivals.join(','));
   ok(data.confs.length >= 10, 'at least 10 conferences (got ' + data.confs.length + ')');
 
+  group('Complete college program database');
+  const divisions = await page.evaluate(() => {
+    const result = {};
+    window.TeamData.DIVISIONS.forEach(div => {
+      const teams = window.TeamData.byDivision(div);
+      const ids = teams.map(t => t.id);
+      result[div] = {
+        count: teams.length,
+        duplicateIds: ids.filter((id, i) => ids.indexOf(id) !== i),
+        invalid: teams.filter(t => !t.name || !t.nick || !t.conf || !t.city || !t.st || !t.colors || t.colors.length !== 2 || !(t.prestige >= 1 && t.prestige <= 10)).map(t => t.id),
+        dangling: teams.reduce((out, t) => out.concat((t.rivals || []).filter(id => !window.TeamData.get(id)).map(id => t.id + '->' + id)), [])
+      };
+    });
+    result.total = window.TeamData.count();
+    result.sec = window.TeamData.byConference('SEC').filter(t => t.div === 'fbs').map(t => t.name);
+    return result;
+  });
+  ok(divisions.fbs.count >= 136, 'all current FBS programs loaded (got ' + divisions.fbs.count + ')');
+  ok(divisions.fcs.count >= 150, 'complete FCS list plus originals loaded (got ' + divisions.fcs.count + ')');
+  ok(divisions.d2.count >= 190, 'complete Division II list plus originals loaded (got ' + divisions.d2.count + ')');
+  ok(divisions.d3.count >= 275, 'complete Division III list plus originals loaded (got ' + divisions.d3.count + ')');
+  ok(divisions.total >= 750, 'at least 750 playable programs (got ' + divisions.total + ')');
+  eq(divisions.sec.length, 16, 'all 16 SEC programs loaded');
+  ['fbs','fcs','d2','d3'].forEach(div => {
+    eq(divisions[div].duplicateIds.length, 0, div + ' ids are unique');
+    eq(divisions[div].invalid.length, 0, div + ' program records are valid');
+    eq(divisions[div].dangling.length, 0, div + ' rivals resolve');
+  });
+
+  group('Full-scale scheduling across every division');
+  const scaledSchedules = await page.evaluate(() => {
+    const E = window.GameEngine, S = window.GameSeason;
+    const coach = { id: 'scale-test', name: 'Scale Test', source: 'custom', ratings: { recruiting: 60, offense: 60, defense: 60, development: 60, discipline: 60, motivation: 60, media: 60 } };
+    return window.TeamData.DIVISIONS.map(div => {
+      const team = window.TeamData.byDivision(div)[0], started = performance.now();
+      E.newCareer(coach, team); S.start(E.state);
+      return { div, programs: window.TeamData.byDivision(div).length, games: E.state.season.schedule.filter(g => g.home === team.id || g.away === team.id).length, ms: performance.now() - started };
+    });
+  });
+  scaledSchedules.forEach(row => {
+    eq(row.games, 12, row.div + ' creates a complete 12-game schedule');
+    ok(row.ms < 3000, row.div + ' schedule builds promptly (' + Math.round(row.ms) + 'ms for ' + row.programs + ' programs)');
+  });
+
   group('Coach dataset integrity');
   const cd = await page.evaluate(() => {
     const C = window.CoachData;
@@ -183,7 +227,15 @@ function serve() {
   await page.click('button:has-text("New Career")');
   await page.waitForSelector('.team-grid .team-card');
   const teamCount = await page.evaluate(() => document.querySelectorAll('.team-card').length);
-  ok(teamCount > 100, 'team select lists many teams (got ' + teamCount + ')');
+  eq(teamCount, 72, 'large team list renders a fast first page');
+  await page.click('.division-toggle button:has-text("Division III")');
+  await page.waitForSelector('.team-card:has-text("Adrian")');
+  ok((await page.textContent('.select-count')).includes('276'), 'Division III reports its full playable count');
+  await page.click('button:has-text("Show More Programs")');
+  ok((await page.locator('.team-card').count()) > 72, 'show-more expands the program grid');
+  await page.fill('.input[type="search"]', 'Adrian');
+  eq(await page.locator('.team-card').count(), 1, 'lower-division search finds a specific program');
+  await page.click('.division-toggle button:has-text("FBS")');
 
   // Filter by search then pick a specific team
   await page.fill('.input[type="search"]', 'FIU');

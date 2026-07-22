@@ -46,13 +46,16 @@
       'color:' + readable(team.colors[0]) + ';border:2px solid ' + team.colors[1] + ';' });
     if (window.GameCrests) wrap.appendChild(window.GameCrests.render(team, size));
     else wrap.appendChild(el('span', { class: 'badge-emoji', text: team.emoji || '🏈' }));
-    // Attempt logo upgrade.
-    var img = new Image();
-    img.className = 'badge-img';
-    img.alt = team.name;
-    img.onload = function () { wrap.classList.add('has-logo'); wrap.appendChild(img); };
-    img.onerror = function () {};
-    img.src = 'images/logos/' + team.id + '.png';
+    // Imported programs intentionally use generated crests. Skip hundreds of
+    // image probes while keeping the drop-in logo path for bundled teams.
+    if (!team.generatedCrestOnly) {
+      var img = new Image();
+      img.className = 'badge-img';
+      img.alt = team.name;
+      img.onload = function () { wrap.classList.add('has-logo'); wrap.appendChild(img); };
+      img.onerror = function () {};
+      img.src = 'images/logos/' + team.id + '.png';
+    }
     return wrap;
   }
 
@@ -163,7 +166,7 @@
         el('span', { text: '🏈 4 divisions' }), el('span', { text: '🧑‍💼 assistant-to-legend careers' }),
         el('span', { text: '🌎 evolving worlds' }), el('span', { text: '📴 offline PWA' })
       ]),
-      el('p', { class: 'title-foot', text: 'v2.2 · Team Identity · ' + T.all().length + ' playable programs' })
+      el('p', { class: 'title-foot', text: 'v2.3 · Complete Program Universe · ' + T.all().length + ' playable programs' })
     ]);
     mount(card);
   }
@@ -221,11 +224,13 @@
 
   // ---- Screen: Team Select -------------------------------------------------
   function renderTeamSelect() {
-    var state = { division: pick.division || 'fbs', conf: 'All', q: '', bottom: pick.startBottom || false };
+    var state = { division: pick.division || 'fbs', conf: 'All', q: '', bottom: pick.startBottom || false, limit: 72 };
     var confs = T.conferences(state.division);
 
     var list = el('div', { class: 'grid team-grid' });
     var subtitle = el('p', { class: 'muted select-count' });
+    var more = btn('Show More Programs', 'ghost', function () { state.limit += 72; refresh(); });
+    var moreWrap = el('div', { class: 'load-more' }, [more]);
 
     function refresh() {
       list.innerHTML = '';
@@ -238,8 +243,11 @@
         }
         return true;
       }).sort(function (a, b) { return a.name.localeCompare(b.name); });
-      subtitle.textContent = teams.length + ' program' + (teams.length === 1 ? '' : 's');
-      teams.forEach(function (t) {
+      var visible = teams.slice(0, state.limit);
+      subtitle.textContent = teams.length > visible.length ? ('Showing ' + visible.length + ' of ' + teams.length + ' programs') : (teams.length + ' program' + (teams.length === 1 ? '' : 's'));
+      moreWrap.style.display = teams.length > visible.length ? '' : 'none';
+      more.textContent = 'Show More Programs (' + (teams.length - visible.length) + ' remaining)';
+      visible.forEach(function (t) {
         var stars = '★'.repeat(Math.round(t.prestige / 2)) + '☆'.repeat(5 - Math.round(t.prestige / 2));
         list.appendChild(el('button', {
           class: 'card team-card' + (pick.team && pick.team.id === t.id ? ' selected' : ''),
@@ -256,12 +264,12 @@
       });
     }
 
-    var confSel = el('select', { class: 'select', onchange: function (e) { state.conf = e.target.value; refresh(); } },
+    var confSel = el('select', { class: 'select', onchange: function (e) { state.conf = e.target.value; state.limit = 72; refresh(); } },
       [el('option', { value: 'All', text: 'All Conferences' })].concat(
         confs.map(function (c) { return el('option', { value: c, text: c }); })));
 
     var search = el('input', { class: 'input', type: 'search', placeholder: 'Search team, mascot, city…',
-      oninput: function (e) { state.q = e.target.value; refresh(); } });
+      oninput: function (e) { state.q = e.target.value; state.limit = 72; refresh(); } });
 
     var footer = el('div', { class: 'sticky-footer' }, [
       el('div', { class: 'sf-info' }, [
@@ -302,7 +310,7 @@
       ]),
       divisionToggle, modeToggle,
       el('div', { class: 'toolbar' }, [confSel, search, subtitle]),
-      list, footer
+      list, moreWrap, footer
     ]);
     mount(screen);
     refresh();

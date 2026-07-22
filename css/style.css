@@ -618,6 +618,8 @@ h1, h2, h3 { margin: 0 0 6px; line-height: 1.15; }
 .news-copy { flex: 1; }
 .title-features { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 620px; margin: 18px auto 2px; }
 .title-features span { border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 999px; padding: 6px 10px; font-size: 12px; }
+.load-more { display: flex; justify-content: center; padding: 18px 0 8px; }
+.load-more .btn { min-width: 220px; }
 .case-metrics { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0; }
 .case-metrics span { padding: 5px 8px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); font-size: 11px; font-weight: 700; }
 .case-decision { border-color: #d79a36; box-shadow: 0 0 0 1px rgba(215,154,54,.14); }

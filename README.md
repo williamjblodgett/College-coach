@@ -26,8 +26,12 @@ One global object per module, plain `<script>` tags, no bundler.
 | `js/engine.js` | `GameEngine` | Serializable game state, rules, save/load with backfill |
 | `js/ui.js` | `GameUI` | Screens + rendering (title → team → coach → HQ) |
 | `js/data/teams.js` | `TeamData` | Division-tiered team registry |
-| `js/data/teams-fbs.js` | — | All 136 FBS programs |
-| `js/data/lower-divisions.js` | — | 96 original FCS, D-II, and D-III programs |
+| `js/data/teams-fbs.js` | — | All 136 FBS programs, including all 16 SEC members |
+| `js/data/teams-fcs.js` | — | 124 current FCS programs |
+| `js/data/teams-d2.js` | — | 160 current Division II programs |
+| `js/data/teams-d3.js` | — | 244 current Division III programs |
+| `js/data/lower-divisions.js` | — | 96 original programs retained for save compatibility |
+| `scripts/sync-lower-divisions.ps1` | — | Rebuilds lower-division data from public program tables |
 | `js/data/coaches.js` | `CoachData` | Real coaches, legends, create-a-coach config |
 | `js/football.js` | `GameFootball` | Player stats, fatigue, injuries, morale, awards, draft decisions |
 | `js/story.js` | `GameStory` | Roles, relationships, badges, press conferences |
@@ -45,10 +49,10 @@ never break**. Unknown/future keys are preserved. Saves live in `localStorage`
 ### Data tiering
 
 All four playable levels—FBS, FCS, D-II, and D-III—use the same generic season
-engine. Lower-division schools are original fictional programs, supporting a
-true unknown-assistant-to-blue-blood career without introducing additional
-trademarked brands. Every team receives a deterministic, code-generated SVG
-crest; optional licensed PNGs can still use the documented drop-in pipeline.
+engine. The database includes current programs across every level plus the
+original lower-division universe retained for existing saves. Every imported
+team receives a deterministic, code-generated SVG crest; optional licensed
+PNGs can still use the documented drop-in pipeline.
 
 ## Tests
 
@@ -74,6 +78,7 @@ npm test           # node tests/run.js
 10. ✅ **Player football spine** — individual season/career statistics, box scores, fatigue, durability, injuries, morale, awards, records, and draft declarations
 11. ✅ **Career stories** — assistant/coordinator starts, career badges, relationships, press conferences, enriched recruiting pitches/dealbreakers/visits/decommits
 12. ✅ **Living world** — evolving AI programs, fictional AI coach turnover, persistent rivalry history, newsroom, conference realignment, and original lower-division ladders
+13. ✅ **Complete program universe** — 760 playable teams: all 136 FBS programs (including the full SEC), current FCS/D-II/D-III membership, original save-compatible programs, fast search, and paged browsing
 13. ✅ **2.0 experience** — five save slots with recovery snapshots, difficulty presets, original SVG crests, weekly game plans, regional weather, install/update/offline UX, reduced motion, and sound controls
 14. ✅ **Dynasty Stories 2.1** — 20+ compliance and scandal events, persistent investigations, evidence and media pressure, response/discovery/hearing stages, appeals, whistleblowers, staff and player fallout, career case history, and reform/redemption programs
 15. ✅ **Team Identity 2.2** — every career screen derives accessible accents, surfaces, borders, meters, highlights, and mobile/PWA browser chrome from the active school’s primary and secondary colors

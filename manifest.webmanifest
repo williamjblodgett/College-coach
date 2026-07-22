@@ -1,7 +1,7 @@
 {
   "name": "Gridiron Dynasty",
   "short_name": "Gridiron",
-  "description": "Build a college football coaching career from unknown assistant to dynasty legend.",
+  "description": "Build a career across 760 playable college football programs, from Division III to the SEC.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
