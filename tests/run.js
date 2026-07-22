@@ -136,7 +136,8 @@ function serve() {
     return {
       real: C.real.length, legends: C.legends.length,
       backgrounds: C.backgrounds.length, badRatings: badRatings.map(c => c.id),
-      skills: C.SKILLS.length
+      skills: C.SKILLS.length,
+      portraitKeys: all.map(c => (c.portraitFile || c.portraitSheet) + ':' + c.portrait)
     };
   });
   ok(cd.real >= 15, 'at least 15 real coaches (got ' + cd.real + ')');
@@ -144,6 +145,7 @@ function serve() {
   eq(cd.skills, 7, '7 skill categories');
   eq(cd.badRatings.length, 0, 'all coach ratings in 0..100');
   ok(cd.backgrounds >= 4, 'at least 4 create-a-coach backgrounds');
+  eq(new Set(cd.portraitKeys).size, cd.portraitKeys.length, 'every named coach has a unique explicit portrait mapping');
 
   // ---------- (a) ENGINE MATH ----------
   group('Engine state + save/load backfill');
@@ -1205,10 +1207,10 @@ function serve() {
   group('No runtime errors');
   const releaseUpdate = await page.evaluate(async () => {
     const [sw, pwa] = await Promise.all([fetch('/sw.js').then(r => r.text()), fetch('/js/pwa.js').then(r => r.text())]);
-    return { immediate: sw.includes('self.skipWaiting();'), cache: sw.includes('gridiron-dynasty-v27-living-dynasty'), genericNotice: pwa.includes('New Gridiron Dynasty release installed') };
+    return { immediate: sw.includes('self.skipWaiting();'), cache: sw.includes('gridiron-dynasty-v28-coach-identities'), genericNotice: pwa.includes('New Gridiron Dynasty release installed') };
   });
   ok(releaseUpdate.immediate, 'service worker activates releases immediately');
-  ok(releaseUpdate.cache, 'latest v27 cache name is shipped');
+  ok(releaseUpdate.cache, 'latest v28 cache name is shipped');
   ok(releaseUpdate.genericNotice, 'PWA update message is release-agnostic');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));
 

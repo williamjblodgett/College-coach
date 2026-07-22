@@ -76,6 +76,18 @@
     C('darrell','Darrell Royal','legend','CEO','Wishbone pioneer and dignified program leader.',[86,86,84,88,90,86,82])
   ];
 
+  // Named coaches use an explicit identity-to-cell mapping. Custom coaches
+  // continue to use the generic portrait builder sheet below.
+  real.forEach(function (coach, i) {
+    if (i < 16) { coach.portraitSheet = 'coach-active-a.jpg'; coach.portrait = i; }
+    else if (i < 32) { coach.portraitSheet = 'coach-active-b.jpg'; coach.portrait = i - 16; }
+    else { coach.portraitFile = 'coach-lance.jpg'; coach.portrait = 0; }
+  });
+  legends.forEach(function (coach, i) {
+    coach.portraitSheet = 'coach-legends.jpg'; coach.portrait = i;
+    if (coach.id === 'joepa') { coach.portraitSheet = null; coach.portraitFile = 'coaches/joepa.jpg'; }
+  });
+
   // ---- Create-a-coach config ----
   var backgrounds = [
     { id: 'qbguru', name: 'QB Guru', blurb: 'Made your name developing quarterbacks.',

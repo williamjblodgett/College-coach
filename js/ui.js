@@ -103,13 +103,20 @@
 
   function coachAvatar(coach, size) {
     size = size || 44;
+    var canonical = coach && coach.id && window.CoachData ? window.CoachData.get(coach.id) : null;
+    if (canonical && !coach.portraitSheet && !coach.portraitFile) coach = Object.assign({}, coach, {
+      portrait: canonical.portrait, portraitSheet: canonical.portraitSheet, portraitFile: canonical.portraitFile
+    });
     var idx = typeof coach.portrait === 'number' ? coach.portrait : coachPortraitIndex(coach);
     idx = Math.max(0, Math.min(15, idx));
     var col = idx % 4, row = Math.floor(idx / 4), ring = coach.color || '#ffb400';
-    return el('span', { class: 'coach-portrait', role: 'img', 'aria-label': (coach.name || 'Coach') + ' illustrated portrait',
+    var image = coach.portraitFile ? ('images/' + coach.portraitFile) : (coach.portraitSheet ? ('images/' + coach.portraitSheet) : 'images/coach-portraits-v1.png');
+    var single = !!coach.portraitFile;
+    return el('span', { class: 'coach-portrait', role: 'img', 'aria-label': (coach.name || 'Coach') + ' portrait',
       'data-portrait': idx, style:
       'width:' + size + 'px;height:' + size + 'px;' +
-      'background-position:' + (col * 100 / 3) + '% ' + (row * 100 / 3) + '%;' +
+      'background-image:url("' + image + '");background-size:' + (single ? 'cover' : '400% 400%') + ';' +
+      'background-position:' + (single ? 'center 20%' : ((col * 100 / 3) + '% ' + (row * 100 / 3) + '%')) + ';' +
       'border-color:' + ring + ';box-shadow:0 0 0 2px ' + mixHex(ring, '#000000', .48) + ',0 8px 20px rgba(0,0,0,.32);' });
   }
 
@@ -227,7 +234,7 @@
         el('span', { text: '🏈 4 divisions' }), el('span', { text: '🧑‍💼 assistant-to-legend careers' }),
         el('span', { text: '🌎 evolving worlds' }), el('span', { text: '📴 offline PWA' })
       ]),
-      el('p', { class: 'title-foot', text: 'v2.7 · Living Dynasty · ' + T.all().length + ' playable programs' })
+      el('p', { class: 'title-foot', text: 'v2.8 · Coach Identities · ' + T.all().length + ' playable programs' })
     ]);
     mount(card);
   }
@@ -428,6 +435,7 @@
       return {
         id: c.id, name: c.name, source: c.source || c.tab || 'real',
         background: c.background || c.archetype || '', avatar: c.avatar || '🧢', portrait: typeof c.portrait === 'number' ? c.portrait : coachPortraitIndex(c),
+        portraitSheet: c.portraitSheet || null, portraitFile: c.portraitFile || null,
         color: c.color || '#c8102e', bio: c.bio || '',
         ratings: JSON.parse(JSON.stringify(c.ratings))
       };
