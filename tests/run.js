@@ -249,12 +249,16 @@ function serve() {
 
   // Coach select — real tab
   await page.waitForSelector('.coach-grid .coach-card');
+  ok(await page.isVisible('.coach-card .coach-portrait'), 'coach cards render illustrated portraits');
+  ok((await page.getAttribute('.coach-card .coach-portrait', 'style')).includes('background-position'), 'coach portrait selects a sprite cell');
   await page.click('.coach-card:has-text("Kirby Smart")');
   // Switch to create-a-coach and build one
   await page.click('.tab:has-text("Create-a-Coach")');
   await page.waitForSelector('.builder');
   await page.fill('.builder .input[type="text"]', 'Coach Riley Vance');
   await page.click('.builder .chip:has-text("QB Guru")');
+  eq(await page.locator('.portrait-option').count(), 16, 'create-a-coach offers 16 realistic portraits');
+  await page.click('.portrait-option[data-portrait="5"]');
   // move a slider
   const slider = await page.$('.builder .range');
   await slider.focus();
@@ -268,10 +272,13 @@ function serve() {
     team: document.querySelector('.hq-team') ? document.querySelector('.hq-team').textContent : '',
     coach: document.querySelector('.hq-coach') ? document.querySelector('.hq-coach').textContent : '',
     stateCoach: window.GameEngine.state.coach.name,
+    portrait: window.GameEngine.state.coach.portrait,
     stateTeam: window.GameEngine.state.team.id,
     saved: window.GameEngine.hasSave()
   }));
   ok(/FIU/.test(hq.team), 'HQ shows chosen team (' + hq.team + ')');
+  eq(hq.portrait, 5, 'custom portrait persists into the career');
+  ok(await page.isVisible('.hq .coach-portrait'), 'HQ renders the coach portrait');
   ok(await page.isVisible('.command-bar'), 'HQ renders the persistent command-center navigation');
   ok(/Riley Vance/.test(hq.coach), 'HQ shows created coach (' + hq.coach + ')');
   eq(hq.stateCoach, 'Coach Riley Vance', 'state has created coach');

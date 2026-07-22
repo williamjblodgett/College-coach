@@ -158,6 +158,7 @@ h1, h2, h3 { margin: 0 0 6px; line-height: 1.15; }
 }
 .badge .badge-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 4px; background: rgba(255,255,255,.06); }
 .badge.has-logo .badge-emoji { opacity: 0; }
+.coach-portrait { display: inline-block; flex: 0 0 auto; border: 2px solid var(--accent); border-radius: 18%; background-color: #101722; background-image: url('../images/coach-portraits-v1.png'); background-repeat: no-repeat; background-size: 400% 400%; background-origin: border-box; overflow: hidden; }
 
 /* ---- skill chips ---- */
 .skill-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
@@ -203,6 +204,11 @@ h1, h2, h3 { margin: 0 0 6px; line-height: 1.15; }
 .swatch { width: 30px; height: 30px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; }
 .swatch.active { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
 .appearance { display: flex; flex-direction: column; gap: 8px; }
+.portrait-picker { display: grid; grid-template-columns: repeat(8, minmax(58px, 1fr)); gap: 7px; }
+.portrait-option { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2); cursor: pointer; transition: transform .12s, border-color .12s, background .12s; }
+.portrait-option:hover { transform: translateY(-2px); border-color: var(--team-border); }
+.portrait-option.active { border-color: var(--accent); background: var(--team-wash); box-shadow: 0 0 0 2px var(--team-glow); }
+.portrait-option .coach-portrait { width: 100% !important; height: auto !important; aspect-ratio: 1; box-shadow: none !important; }
 .pool-label { font-weight: 800; color: var(--accent-2); }
 .pool-label.over { color: var(--danger); }
 .sliders { display: flex; flex-direction: column; gap: 9px; }
@@ -687,6 +693,7 @@ h1, h2, h3 { margin: 0 0 6px; line-height: 1.15; }
   .hq-hero { padding: 18px; }
   .hq-hero > .badge { width: 58px !important; height: 58px !important; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .portrait-picker { grid-template-columns: repeat(4, 1fr); }
 }
 .case-metrics { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0; }
 .case-metrics span { padding: 5px 8px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); font-size: 11px; font-weight: 700; }

@@ -2,7 +2,7 @@
  * Bump CACHE_NAME on every release so deploys reach devices. Network-first means
  * the newest deploy always wins when online; cache is a fallback for offline.
  */
-var CACHE_NAME = 'gridiron-dynasty-v24-1-command-center-ui';
+var CACHE_NAME = 'gridiron-dynasty-v25-coach-portraits';
 
 var CORE = [
   './',
@@ -37,7 +37,8 @@ var CORE = [
   './js/audio.js',
   './js/ui.js',
   './manifest.webmanifest',
-  './icons/icon.svg'
+  './icons/icon.svg',
+  './images/coach-portraits-v1.png'
 ];
 
 self.addEventListener('install', function (e) {

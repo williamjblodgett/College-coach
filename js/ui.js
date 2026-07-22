@@ -64,11 +64,20 @@
 
   function coachAvatar(coach, size) {
     size = size || 44;
-    var bg = coach.color || '#333';
-    return el('span', { class: 'badge', style:
-      'width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.5) + 'px;' +
-      'background:linear-gradient(135deg,' + bg + ',' + shade(bg, -20) + ');color:#fff;' },
-      [el('span', { text: coach.avatar || '🧢' })]);
+    var idx = typeof coach.portrait === 'number' ? coach.portrait : coachPortraitIndex(coach);
+    idx = Math.max(0, Math.min(15, idx));
+    var col = idx % 4, row = Math.floor(idx / 4), ring = coach.color || '#ffb400';
+    return el('span', { class: 'coach-portrait', role: 'img', 'aria-label': (coach.name || 'Coach') + ' illustrated portrait',
+      'data-portrait': idx, style:
+      'width:' + size + 'px;height:' + size + 'px;' +
+      'background-position:' + (col * 100 / 3) + '% ' + (row * 100 / 3) + '%;' +
+      'border-color:' + ring + ';box-shadow:0 0 0 2px ' + mixHex(ring, '#000000', .48) + ',0 8px 20px rgba(0,0,0,.32);' });
+  }
+
+  function coachPortraitIndex(coach) {
+    var key = String(coach.id || coach.name || coach.avatar || 'coach'), h = 0;
+    for (var i = 0; i < key.length; i++) h = ((h * 31) + key.charCodeAt(i)) >>> 0;
+    return h % 16;
   }
 
   // Color helpers.
@@ -179,7 +188,7 @@
         el('span', { text: '🏈 4 divisions' }), el('span', { text: '🧑‍💼 assistant-to-legend careers' }),
         el('span', { text: '🌎 evolving worlds' }), el('span', { text: '📴 offline PWA' })
       ]),
-      el('p', { class: 'title-foot', text: 'v2.4 · Command Center UI · ' + T.all().length + ' playable programs' })
+      el('p', { class: 'title-foot', text: 'v2.5 · Coach Portrait Studio · ' + T.all().length + ' playable programs' })
     ]);
     mount(card);
   }
@@ -366,7 +375,7 @@
         class: 'card coach-card' + (pick.coach && pick.coach.id === c.id ? ' selected' : ''),
         onclick: function () { pick.coach = normalizeChoice(c); refresh(); }
       }, [
-        coachAvatar(c, 46),
+        coachAvatar(c, 64),
         el('div', { class: 'card-body' }, [
           el('div', { class: 'card-title', text: c.name }),
           el('div', { class: 'card-sub', text: c.archetype }),
@@ -379,7 +388,7 @@
     function normalizeChoice(c) {
       return {
         id: c.id, name: c.name, source: c.source || c.tab || 'real',
-        background: c.background || c.archetype || '', avatar: c.avatar || '🧢',
+        background: c.background || c.archetype || '', avatar: c.avatar || '🧢', portrait: typeof c.portrait === 'number' ? c.portrait : coachPortraitIndex(c),
         color: c.color || '#c8102e', bio: c.bio || '',
         ratings: JSON.parse(JSON.stringify(c.ratings))
       };
@@ -486,7 +495,7 @@
 
     if (!pick.build) {
       pick.build = {
-        name: '', background: CoachData.backgrounds[0].id,
+        name: '', background: CoachData.backgrounds[0].id, portrait: 0,
         avatar: CoachData.avatars[0], color: CoachData.colors[0],
         alloc: {}
       };
@@ -511,7 +520,7 @@
       CoachData.SKILLS.forEach(function (k) { ratings[k] = effective(k); });
       var built = {
         id: 'custom_' + Date.now(), name: b.name.trim(), source: 'custom',
-        background: b.background, avatar: b.avatar, color: b.color,
+        background: b.background, avatar: b.avatar, portrait: b.portrait, color: b.color,
         bio: (CoachData.background(b.background) || {}).blurb || 'A coach of your own making.',
         ratings: ratings
       };
@@ -537,12 +546,13 @@
       }))
     ]);
 
-    var appearRow = el('div', { class: 'form-row' }, [
-      el('label', { text: 'Appearance' }),
+    var appearRow = el('div', { class: 'form-row coach-appearance-row' }, [
+      el('label', { text: 'Portrait & Accent' }),
       el('div', { class: 'appearance' }, [
-        el('div', { class: 'chip-select tight' }, CoachData.avatars.map(function (a) {
-          return el('button', { class: 'chip emoji' + (b.avatar === a ? ' active' : ''),
-            onclick: function () { b.avatar = a; render(); } }, [a]);
+        el('div', { class: 'portrait-picker' }, Array.from({ length: 16 }, function (_, i) {
+          return el('button', { class: 'portrait-option' + (b.portrait === i ? ' active' : ''), 'data-portrait': i,
+            title: 'Portrait ' + (i + 1), 'aria-label': 'Choose coach portrait ' + (i + 1),
+            onclick: function () { b.portrait = i; render(); } }, [coachAvatar({ name: 'Portrait ' + (i + 1), portrait: i, color: b.color }, 58)]);
         })),
         el('div', { class: 'chip-select tight' }, CoachData.colors.map(function (c) {
           return el('button', { class: 'swatch' + (b.color === c ? ' active' : ''),
@@ -576,7 +586,7 @@
       });
       // header avatar preview
       preview.innerHTML = '';
-      preview.appendChild(coachAvatar({ avatar: b.avatar, color: b.color }, 48));
+      preview.appendChild(coachAvatar({ name: b.name || 'Custom coach', avatar: b.avatar, portrait: b.portrait, color: b.color }, 76));
       preview.appendChild(el('div', {}, [
         el('div', { class: 'card-title', text: b.name || '(unnamed coach)' }),
         el('div', { class: 'card-sub', text: (bg ? bg.name : '') })
