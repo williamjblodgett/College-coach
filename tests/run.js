@@ -328,6 +328,21 @@ function serve() {
     let W = 0, L = 0; Object.keys(s.league).forEach(id => { W += s.league[id].w; L += s.league[id].l; });
 
     const conf = S.playConfChamps(E.state);
+    S.preparePostseason(E.state);
+    let playoffGame = S.playerPostseasonGame(E.state);
+    if (!playoffGame) { S.simPostseasonRound(E.state, true); playoffGame = S.playerPostseasonGame(E.state); }
+    let coachedPlayoff = false;
+    const originalTeamId = E.state.team.id;
+    if (!playoffGame) {
+      playoffGame = S.currentPostseasonGames(E.state).find(g => !g.played);
+      if (playoffGame) E.state.team.id = playoffGame.home;
+    }
+    if (playoffGame) {
+      const homeWon = playoffGame.home === E.state.team.id;
+      S.commitPostseasonResult(E.state, playoffGame, homeWon ? 31 : 20, homeWon ? 20 : 31, { rush: 140, pass: 245, first: 21, to: 1 });
+      coachedPlayoff = playoffGame.played;
+    }
+    E.state.team.id = originalTeamId;
     const post = S.playPostseason(E.state);
     const champion = s.postseason.champion;
     const seeds = s.postseason.cfpSeeds.length;
@@ -338,7 +353,7 @@ function serve() {
       hist: E.state.history.length, phase: E.state.season.phase, started: E.state.season.started };
 
     return { teams: teams.length, weekConflicts, maxGames, playerGames, unplayed, W, L,
-      confGames: conf.length, seeds, champion, bowls: s.postseason.bowls.length,
+      confGames: conf.length, seeds, champion, bowls: s.postseason.bowls.length, coachedPlayoff,
       playerRec: sum, careerBefore, careerAfter };
   });
   eq(se.teams, 136, 'season simulates all 136 FBS teams');
@@ -350,6 +365,7 @@ function serve() {
   ok(se.confGames >= 6, 'conference title games are played (got ' + se.confGames + ')');
   eq(se.seeds, 12, '12-team playoff bracket seeded');
   ok(!!se.champion, 'a national champion is crowned (' + se.champion + ')');
+  ok(se.coachedPlayoff, 'a player-coached playoff result commits into the live bracket');
   ok(se.bowls >= 10, 'bowl slate is populated (got ' + se.bowls + ')');
   eq(se.careerAfter.seasons, se.careerBefore.seasons + 1, 'finish() increments seasons coached');
   eq(se.careerAfter.year, se.careerBefore.year, 'finish() holds the year for the offseason');
@@ -406,8 +422,15 @@ function serve() {
   await page.click('button:has-text("Sim to Postseason")');
   await page.waitForSelector('button:has-text("Play Championship Games")');
   await page.click('button:has-text("Play Championship Games")');
-  await page.waitForSelector('button:has-text("Run the Playoff")');
-  await page.click('button:has-text("Run the Playoff")');
+  await page.waitForSelector('button:has-text("Reveal the Playoff Field")');
+  await page.click('button:has-text("Reveal the Playoff Field")');
+  await page.waitForSelector('.playoff-reveal');
+  ok(await page.isVisible('.reveal-field'), 'playoff qualification gets a dedicated field reveal');
+  await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/playoff-reveal-mobile.png'), fullPage: true });
+  await page.click('button:has-text("Enter the Playoff"), button:has-text("View the Playoff")');
+  await page.waitForSelector('.playoff-center');
+  ok(await page.isVisible('.playoff-path'), 'round-by-round playoff center renders');
+  await page.click('button:has-text("Sim Entire Playoff")');
   await page.waitForSelector('.champ-banner');
   ok(await page.isVisible('.champ-banner'), 'national champion banner shows after playoff');
 
@@ -1045,7 +1068,7 @@ function serve() {
     out.blockedNoFunds = C.buy(E.state, 'statue').ok === false;
     return out;
   });
-  ok(store.catalog >= 18, 'store has a wide catalog (' + store.catalog + ' items)');
+  ok(store.catalog >= 28, 'store has an expanded catalog (' + store.catalog + ' items)');
   ok(store.walletDeducted, 'a purchase deducts from the wallet');
   ok(store.recruitingHelps, 'a program buy improves recruiting');
   ok(store.repImmediate, 'a legacy buy applies an immediate reputation gain');
@@ -1061,11 +1084,22 @@ function serve() {
   });
   await page.waitForSelector('.store-item');
   const items = await page.evaluate(() => document.querySelectorAll('.store-item').length);
-  ok(items >= 18, 'store screen renders the catalog (' + items + ')');
+  ok(items >= 28, 'store screen renders the expanded catalog (' + items + ')');
   const wBefore = await page.evaluate(() => window.GameEngine.state.career.wallet);
   await page.click('.store-item .si-buy:not([disabled])');
   const wAfter = await page.evaluate(() => window.GameEngine.state.career.wallet);
   ok(wAfter < wBefore, 'buying from the UI spends money');
+
+  group('UI: all-time coaching leaderboard + mobile dock');
+  await page.evaluate(() => window.GameUI.renderCoachRankings());
+  await page.waitForSelector('.rankings-screen .coach-rank-row.mine');
+  const legacy = await page.evaluate(() => ({ rows: document.querySelectorAll('.coach-rank-row').length,
+    mine: document.querySelector('.coach-rank-row.mine .coach-rank-name strong').textContent,
+    nav: !!document.querySelector('.mobile-nav') }));
+  ok(legacy.rows >= 13, 'all-time leaderboard compares the active coach with historic greats');
+  eq(legacy.mine, 'Coach', 'active coach is highlighted in the legacy ranking');
+  ok(legacy.nav, 'career screens render the mobile navigation dock');
+  await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/coach-legacy-mobile.png'), fullPage: true });
 
   group('Championship cutscene (Wave 8)');
   await page.evaluate(() => {
@@ -1171,7 +1205,7 @@ function serve() {
   group('No runtime errors');
   const releaseUpdate = await page.evaluate(async () => {
     const [sw, pwa] = await Promise.all([fetch('/sw.js').then(r => r.text()), fetch('/js/pwa.js').then(r => r.text())]);
-    return { immediate: sw.includes('self.skipWaiting();'), cache: sw.includes('gridiron-dynasty-v25-1-auto-update'), genericNotice: pwa.includes('New Gridiron Dynasty release installed') };
+    return { immediate: sw.includes('self.skipWaiting();'), cache: sw.includes('gridiron-dynasty-v26-playoff-mobile'), genericNotice: pwa.includes('New Gridiron Dynasty release installed') };
   });
   ok(releaseUpdate.immediate, 'service worker activates releases immediately');
   ok(releaseUpdate.cache, 'latest v25.1 cache name is shipped');

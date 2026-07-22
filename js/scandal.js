@@ -195,7 +195,10 @@
       // ~16% per week, a touch higher when heat is already up (rivals dig),
       // scaled by the chosen intensity.
       var chance = (0.14 + (i.heat > 40 ? 0.05 : 0)) * cfg.mult;
-      if (rng() > chance) return null;
+      // Realistic/high settings guarantee the first temptation by week five.
+      // Randomness still controls its identity and every later appearance.
+      var guaranteed = intensity !== 'off' && i.eventsThisSeason === 0 && state.season.week >= 5;
+      if (!guaranteed && rng() > chance) return null;
       var pool = EVENTS.filter(function (e) {
         if (e.once && i.seenEvents.indexOf(e.id) >= 0) return false;
         if (e.rare && rng() > 0.28) return false;        // gate the rare one hard
@@ -229,6 +232,7 @@
       if (opt.risky) i.riskyThisSeason = (i.riskyThisSeason || 0) + 1;
       i.allegations.push({ year: state.career.year, event: ev.id, choice: opt.id, tag: (opt.fx && opt.fx.tag) || '', risky: !!opt.risky });
       if (window.GameCases) window.GameCases.onScandalChoice(state, ev, opt, outcome);
+      i.latestOutcome = { title: ev.title, choice: opt.label, risky: !!opt.risky, effects: outcome, year: state.career.year, week: state.season.week };
       return { ok: true, event: ev, option: opt, outcome: outcome };
     },
 

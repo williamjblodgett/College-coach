@@ -703,3 +703,46 @@ h1, h2, h3 { margin: 0 0 6px; line-height: 1.15; }
 .case-file-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
 .case-file p { margin: 5px 0; }
 .redemption-panel { border-color: rgba(22,201,141,.35); }
+
+/* ---- 2.6 mobile shell, playoff theatre, legacy -------------------------- */
+.screen-enter { animation: screen-enter .18s cubic-bezier(.2,.75,.3,1); }
+@keyframes screen-enter { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } }
+.mobile-nav { display:none; }
+.integrity-alert { width:100%; display:flex; align-items:center; gap:12px; text-align:left; color:var(--text); background:linear-gradient(90deg,rgba(210,72,72,.18),var(--panel)); border:1px solid rgba(239,91,91,.46); border-radius:14px; padding:11px 14px; margin-bottom:12px; cursor:pointer; }
+.integrity-alert > span:nth-child(2) { flex:1; display:flex; flex-direction:column; gap:2px; }
+.integrity-alert small { color:var(--muted); }
+.integrity-pulse { width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:var(--danger);font-weight:900;box-shadow:0 0 0 5px rgba(239,91,91,.12); }
+.compliance-latest{display:flex;flex-direction:column;gap:2px;padding:9px 10px;margin:8px 0;border-radius:9px;background:var(--panel-2);border-left:3px solid var(--accent)}.compliance-latest span{font-size:11px;color:var(--muted)}
+.playoff-invite,.playoff-center { position:relative; overflow:hidden; border:1px solid color-mix(in srgb,var(--team-primary) 55%,var(--line)); border-radius:18px; padding:22px; background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--team-primary) 24%,transparent),transparent 45%),var(--panel); }
+.playoff-kicker { color:var(--accent); font-size:11px; font-weight:900; letter-spacing:.15em; }
+.playoff-invite-title { max-width:620px; margin:5px 0; font-size:clamp(22px,4vw,34px); line-height:1.05; font-weight:900; }
+.playoff-path { display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:22px; }
+.path-step { color:var(--muted);font-size:11px;font-weight:800;text-align:center;border-bottom:3px solid var(--line);padding:7px 3px; }
+.path-step.active { color:var(--text);border-color:var(--accent); }.path-step.done { color:var(--accent-2);border-color:var(--accent-2); }
+.playoff-round-head { display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:10px; }.playoff-round-head h3{margin:3px 0 0}.playoff-count{color:var(--muted);font-size:12px}
+.playoff-callout { padding:10px 12px;margin:12px 0;border-radius:10px;background:color-mix(in srgb,var(--team-primary) 18%,var(--panel-2));border-left:3px solid var(--accent);font-size:13px; }
+.bracket-rails { display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:8px;margin-top:20px;overflow-x:auto;padding-bottom:6px; }.bracket-rail h4{font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:.08em}.rail-game{display:flex;flex-direction:column;gap:3px;padding:8px;margin-bottom:5px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);font-size:11px}.rail-game.mine{border-color:var(--accent)}
+.playoff-reveal { min-height:calc(100dvh - 40px); display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;overflow:hidden;background:radial-gradient(circle at 50% 5%,color-mix(in srgb,var(--team-primary) 38%,transparent),transparent 42%); }
+.reveal-glow{position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.04) 47%,transparent 62%);animation:revealSweep 3s infinite}@keyframes revealSweep{from{transform:translateX(-70%)}to{transform:translateX(70%)}}
+.reveal-trophy,.legacy-trophy{font-size:58px;filter:drop-shadow(0 10px 24px rgba(255,190,20,.35));margin:8px}.reveal-you{display:flex;align-items:center;gap:18px;text-align:left;margin:8px 0 20px}.reveal-you h1{font-size:clamp(30px,6vw,54px);margin:0}.reveal-you p{margin:4px 0;color:var(--muted)}.reveal-status{color:var(--accent-2);font-size:13px;font-weight:900;letter-spacing:.18em}
+.reveal-field{width:min(820px,100%);display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:18px}.reveal-seed{display:flex;align-items:center;gap:8px;text-align:left;padding:8px;border:1px solid var(--line);border-radius:10px;background:rgba(15,20,31,.84)}.reveal-seed.mine{border-color:var(--accent);box-shadow:0 0 18px color-mix(in srgb,var(--team-primary) 28%,transparent)}.seed-no{font-size:18px;font-weight:900;width:20px}.seed-name{font-weight:800;font-size:12px;flex:1}.seed-bye{font-size:9px;color:var(--accent-2);font-weight:900}
+.legacy-hero{text-align:center;padding:28px 18px;border-radius:18px;background:radial-gradient(circle at 50% 0,color-mix(in srgb,var(--team-primary) 35%,transparent),transparent 55%),var(--panel);border:1px solid var(--line);margin-bottom:12px}.legacy-hero h2{font-size:clamp(28px,5vw,46px);margin:0}.legacy-hero p{max-width:620px;margin:8px auto;color:var(--muted)}.legacy-rank-callout{display:inline-flex;align-items:center;gap:9px;background:var(--panel-2);border:1px solid var(--accent);border-radius:999px;padding:7px 12px;margin-top:8px}.legacy-rank-callout strong{font-size:22px;color:var(--accent)}
+.coach-rank-row{display:grid;grid-template-columns:34px 42px minmax(150px,1fr) 70px 80px 58px;gap:9px;align-items:center;padding:10px;border-bottom:1px solid var(--line)}.coach-rank-row.mine{background:color-mix(in srgb,var(--team-primary) 16%,var(--panel));border:1px solid var(--accent);border-radius:11px}.coach-rank-no,.coach-rank-score{font-size:20px;font-weight:900}.coach-rank-score{color:var(--accent);text-align:right}.coach-rank-name{display:flex;flex-direction:column}.coach-rank-name small{color:var(--muted)}.coach-rank-stat{color:var(--muted);font-size:12px}.legend-medallion{width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:linear-gradient(135deg,#4b5570,#1c2231);border:1px solid #7f8aa7;font-weight:900}.ranking-note{text-align:center}.mobile-action-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.btn.mobile-action{min-height:76px;font-size:15px;background:var(--panel);border:1px solid var(--line)}
+.team-crest { display:block;filter:drop-shadow(0 3px 4px rgba(0,0,0,.32)); }
+
+@media (max-width:720px) {
+  #app { padding-bottom:calc(92px + env(safe-area-inset-bottom)); }
+  .screen-enter { animation-duration:.14s; }
+  .command-bar { position:relative;top:0; }.command-links{display:flex;max-width:62%}.command-brand{min-width:0}
+  .mobile-nav { position:fixed;display:grid;grid-template-columns:repeat(5,1fr);left:8px;right:8px;bottom:calc(7px + env(safe-area-inset-bottom));z-index:55;background:rgba(13,17,27,.94);border:1px solid var(--line);border-radius:18px;padding:6px;box-shadow:0 12px 35px rgba(0,0,0,.52);backdrop-filter:blur(16px); }
+  .mobile-nav-item{position:relative;min-width:0;border:0;background:transparent;color:var(--muted);font:inherit;font-size:9px;font-weight:800;padding:5px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;border-radius:11px}.mobile-nav-item.active{color:var(--text);background:color-mix(in srgb,var(--team-primary) 24%,var(--panel-2))}.mobile-nav-icon{font-size:20px;line-height:22px}.nav-alert{position:absolute;top:1px;right:20%;width:15px;height:15px;border-radius:50%;background:var(--danger);color:white;font-size:9px;display:grid;place-items:center}
+  .season-tabs{position:sticky;top:0;z-index:20;display:flex;overflow-x:auto;flex-wrap:nowrap;background:rgba(11,14,22,.94);backdrop-filter:blur(12px);padding:7px 2px;scrollbar-width:none}.season-tabs::-webkit-scrollbar{display:none}.season-tabs .tab{flex:0 0 auto;min-height:40px}
+  .playoff-invite,.playoff-center{padding:15px}.playoff-path{gap:2px}.path-step{font-size:9px}.playoff-scoreboard{grid-template-columns:1fr}.bracket-rails{grid-template-columns:repeat(4,76vw)}
+  .playoff-reveal{min-height:calc(100dvh - 24px);justify-content:flex-start;padding-top:24px}.reveal-field{grid-template-columns:1fr 1fr}.reveal-you{flex-direction:column;text-align:center;gap:8px}.reveal-trophy{font-size:42px}.reveal-seed .badge{width:30px!important;height:30px!important}.seed-name{font-size:10px}
+  .coach-rank-list{overflow:hidden;padding:8px}.coach-rank-row{grid-template-columns:25px 35px minmax(105px,1fr) 50px;gap:6px;padding:9px 4px}.coach-rank-row .coach-rank-stat{display:none}.coach-rank-score{font-size:17px}.coach-rank-name strong{font-size:12px}.coach-rank-name small{font-size:9px}.mobile-action-grid{grid-template-columns:1fr 1fr}
+  .sticky-footer{bottom:calc(76px + env(safe-area-inset-bottom));}
+  .season .sticky-footer{display:none}.season-content{padding-bottom:96px}
+  .gd-btns{display:grid;grid-template-columns:1fr 1fr}.gd-btns .btn,.select.speed{width:100%;min-height:44px}.gameday{padding-bottom:8px}.ticker{max-height:240px}
+}
+
+.reduced-motion .screen-enter,.reduced-motion .reveal-glow { animation:none!important; }

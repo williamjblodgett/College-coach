@@ -35,8 +35,47 @@
   function app() { return document.getElementById('app'); }
   function clear() { var a = app(); while (a.firstChild) a.removeChild(a.firstChild); }
   function mount(node, preserveScroll) {
-    clear(); app().appendChild(node);
+    clear();
+    node.classList.add('screen-enter');
+    app().appendChild(node);
+    if (shouldShowMobileNav(node)) app().appendChild(mobileNav(node));
     if (!preserveScroll) window.scrollTo(0, 0);
+  }
+
+  function shouldShowMobileNav(node) {
+    return !!(E.state && E.state.coach && node.classList.contains('screen') &&
+      !node.classList.contains('gameday') && !node.classList.contains('playoff-reveal') &&
+      !node.classList.contains('champ-cutscene') && !node.classList.contains('offseason'));
+  }
+
+  function mobileNav(node) {
+    var pending = E.state.integrity && (E.state.integrity.pendingEvent || (E.state.integrity.openCases || []).length);
+    function item(label, icon, active, action, badge) {
+      return el('button',{class:'mobile-nav-item'+(active?' active':''),onclick:action},[
+        el('span',{class:'mobile-nav-icon',text:icon}),el('span',{text:label}),badge?el('span',{class:'nav-alert',text:'!'}):null
+      ]);
+    }
+    return el('nav',{class:'mobile-nav','aria-label':'Career navigation'},[
+      item('Home','⌂',node.classList.contains('hq'),function(){E.state.screen='hq';E.save();renderHQ();}),
+      item('Season','🏈',node.classList.contains('season'),function(){window.GameSeason.ensureStarted(E.state);E.state.screen='season';E.save();renderSeason();}),
+      item('Roster','▤',node.classList.contains('roster-screen'),function(){renderRoster('hq');}),
+      item('Legacy','🏆',node.classList.contains('rankings-screen'),renderCoachRankings),
+      item('More','•••',node.classList.contains('mobile-more'),renderMobileMore,!!pending)
+    ]);
+  }
+
+  function renderMobileMore() {
+    var s=E.state;
+    var actions=[
+      ['📰 Newsroom',function(){renderNewsroom();}],['🧑‍🏫 Staff',function(){renderStaff('hq');}],
+      ['⚠️ Case Files',function(){renderCaseFiles();}],['🛍️ Coach Store',function(){renderStore('hq');}],
+      ['⚙️ Settings',renderSettings],['💾 Save Career',function(){E.save();toast('Career saved.');}],
+      ['↩ Main Menu',function(){E.save();renderTitle();}]
+    ];
+    mount(el('div',{class:'screen mobile-more'},[
+      el('div',{class:'screen-head'},[el('h2',{text:'Dynasty Menu'}),el('p',{class:'muted',text:'Everything beyond game week, one tap away.'})]),
+      el('div',{class:'mobile-action-grid'},actions.map(function(a){return btn(a[0],'mobile-action',a[1]);}))
+    ]));
   }
 
   // ---- team monogram / logo (drop-in image upgrade) ------------------------
@@ -188,7 +227,7 @@
         el('span', { text: '🏈 4 divisions' }), el('span', { text: '🧑‍💼 assistant-to-legend careers' }),
         el('span', { text: '🌎 evolving worlds' }), el('span', { text: '📴 offline PWA' })
       ]),
-      el('p', { class: 'title-foot', text: 'v2.5 · Coach Portrait Studio · ' + T.all().length + ' playable programs' })
+      el('p', { class: 'title-foot', text: 'v2.6 · Playoff Game Center · ' + T.all().length + ' playable programs' })
     ]);
     mount(card);
   }
@@ -720,6 +759,7 @@
         btn('🧑‍🏫 Staff', 'ghost', function () { renderStaff('hq'); }),
         window.GameWorld ? btn('📰 Newsroom', 'ghost', function () { renderNewsroom(); }) : null,
         window.GameCareer ? btn('🛍️ Store', 'ghost', function () { renderStore('hq'); }) : null,
+        window.GameCareer ? btn('🏆 Coaching Legends', 'ghost', renderCoachRankings) : null,
         window.GameScandal ? btn('⚙️ Settings', 'ghost', function () { renderSettings(); }) : null,
         btn('💾 Save', 'ghost', function () { E.save(); toast('Career saved.'); }),
         btn('⬇ Export', 'ghost', function () {
@@ -758,6 +798,10 @@
           el('span', { text: 'Compliance ' + integ.complianceScore }),
           el('span', { text: 'Open cases ' + integ.openCases.length })
         ]) : null,
+        integ.latestOutcome ? el('div',{class:'compliance-latest'},[
+          el('strong',{text:'Latest decision · '+integ.latestOutcome.title}),
+          el('span',{text:integ.latestOutcome.choice+(integ.latestOutcome.risky?' · Risk remains active':' · Clean response')})
+        ]):null,
         sanctions.length
           ? el('div', { class: 'sanction-list' }, sanctions.map(function (x) { return el('div', { class: 'sanction-item', text: '⛔ ' + x }); }))
           : el('p', { class: 'muted', text: integ.openCases && integ.openCases.length ? 'A formal inquiry is active.' : 'Program in good standing.' }),
@@ -775,8 +819,19 @@
       ]);
     }
 
+    var integrityAlert = null;
+    if (window.GameScandal && (s.integrity.pendingEvent || (s.integrity.openCases || []).length)) {
+      var pendingEvent=window.GameScandal.pendingEvent(s), openCount=(s.integrity.openCases||[]).length;
+      integrityAlert=el('button',{class:'integrity-alert',onclick:function(){
+        if(pendingEvent){window.GameSeason.ensureStarted(s);s.screen='season';seasonTab='week';E.save();renderSeason();}
+        else renderCaseFiles();
+      }},[el('span',{class:'integrity-pulse',text:'!'}),el('span',{},[
+        el('strong',{text:pendingEvent?'Decision required: '+pendingEvent.title:openCount+' active compliance case'+(openCount===1?'':'s')}),
+        el('small',{text:'Open the compliance desk · consequences continue until resolved'})
+      ]),el('span',{text:'›'})]);
+    }
     var screen = el('div', { class: 'screen hq' }, [
-      commandBar, hero, stats, contractBar,
+      commandBar, integrityAlert, hero, stats, contractBar,
       el('div', { class: 'panel-grid' }, [coachPanel, rivalPanel]),
       compliancePanel, nextPanel
     ]);
@@ -805,6 +860,25 @@
       el('div',{class:'sticky-footer'},[el('div',{class:'sf-info'},[el('span',{text:(w.news||[]).length+' archived stories · '+Object.keys(w.rivalries||{}).length+' tracked rivalries'})]),el('div',{class:'sf-actions'},[btn('← Back to HQ','primary',function(){renderHQ();})])])
     ]);
     mount(screen);
+  }
+
+  function renderCoachRankings() {
+    var s=E.state,C=window.GameCareer,rows=C.allTimeRankings(s),mine=rows.filter(function(r){return r.player;})[0];
+    applyTheme(T.get(s.team.id));
+    var screen=el('div',{class:'screen rankings-screen'},[
+      el('div',{class:'legacy-hero'},[
+        el('div',{class:'playoff-kicker',text:'THE COACHING PANTHEON'}),el('div',{class:'legacy-trophy',text:'🏆'}),
+        el('h2',{text:'All-Time Great Coaches'}),
+        el('p',{text:'Your wins, championships, conference titles, and legacy investments move you up a living career leaderboard.'}),
+        el('div',{class:'legacy-rank-callout'},[el('strong',{text:'#'+mine.rank}),el('span',{text:'Your current place · '+mine.score+' GOAT points'})])
+      ]),
+      el('div',{class:'panel coach-rank-list'},rows.map(function(r){return el('div',{class:'coach-rank-row'+(r.player?' mine':'')},[
+        el('span',{class:'coach-rank-no',text:String(r.rank)}),r.player?coachAvatar(s.coach,38):el('span',{class:'legend-medallion',text:r.rank<=3?'★':'G'}),
+        el('span',{class:'coach-rank-name'},[el('strong',{text:r.name}),el('small',{text:r.player?' Your active dynasty':' Historic résumé'})]),
+        el('span',{class:'coach-rank-stat',text:r.wins+' W'}),el('span',{class:'coach-rank-stat',text:r.titles+' titles'}),el('span',{class:'coach-rank-score',text:r.score})
+      ]);})),
+      el('p',{class:'muted ranking-note',text:'The GOAT index is an in-game comparison metric, not an official historical ranking.'})
+    ]);mount(screen);
   }
 
   function renderCaseFiles() {
@@ -922,8 +996,9 @@
         el('div', { class: 'sc-blurb', text: ev.blurb }),
         el('div', { class: 'sc-options' }, ev.options.map(function (o) {
           return el('button', { class: 'dc-opt' + (o.risky ? ' risky' : ''), onclick: function () {
-            Scandal.resolve(s, o.id); E.save();
+            var result = Scandal.resolve(s, o.id); E.save();
             if (s.integrity.fired) { renderFired(); return; }
+            if (result.ok) toast((result.option.risky ? 'Risk taken: ' : 'Decision recorded: ') + result.option.label);
             draw(); refreshHero();
           } }, [
             el('div', { class: 'dc-opt-label', text: o.label }),
@@ -1055,16 +1130,76 @@
         wrap.appendChild(el('h3', { class: 'sec-title', text: 'Playoff & Bowl Season' }));
         var champConf = Object.keys(s.season.postseason.confChamps).filter(function (c) { return s.season.postseason.confChamps[c] === s.team.id; })[0];
         if (champConf) wrap.appendChild(el('div', { class: 'result-banner win' }, [el('div', { class: 'rb-line', text: '🥇 ' + champConf + ' Champions!' })]));
-        wrap.appendChild(el('p', { class: 'muted', text: 'The 12-team College Football Playoff bracket and the bowl slate are ready.' }));
-        wrap.appendChild(el('div', { class: 'btn-row' }, [
-          btn('🏆  Run the Playoff & Bowls', 'primary big', function () {
-            Season.playPostseason(s); E.save(); draw(); refreshHero();
-          })
-        ]));
+        if (!s.season.postseason.bracket || !s.season.postseason.bracket.firstRound) {
+          wrap.appendChild(el('div', { class: 'playoff-invite' }, [
+            el('div', { class: 'playoff-kicker', text: 'SELECTION DAY' }),
+            el('div', { class: 'playoff-invite-title', text: 'The road to the national title is about to be revealed.' }),
+            el('p', { class: 'muted', text: 'Twelve teams. Four byes. Four rounds. Every game can reshape your legacy.' }),
+            btn('Reveal the Playoff Field', 'primary big', function () {
+              Season.preparePostseason(s); E.save(); renderPlayoffReveal();
+            })
+          ]));
+        } else wrap.appendChild(playoffCenter());
       } else if (phase === 'complete') {
         wrap.appendChild(bracketView());
       }
       return wrap;
+    }
+
+    function playoffCenter() {
+      var bk = s.season.postseason.bracket;
+      var labels = { firstRound: 'First Round', quarters: 'Quarterfinals', semis: 'Semifinals', final: 'National Championship' };
+      var games = Season.currentPostseasonGames(s), mine = Season.playerPostseasonGame(s);
+      var active = labels[bk.activeRound] || 'Playoff', order = ['firstRound','quarters','semis','final'].indexOf(bk.activeRound);
+      var controls = [];
+      if (mine) {
+        controls.push(btn('Coach This Playoff Game', 'primary big', function () { renderGameDay(mine); }));
+        controls.push(btn('Quick Sim My Game', 'ghost', function () { Season.simPostseasonRound(s, false); E.save(); draw(); refreshHero(); }));
+      } else controls.push(btn('Sim ' + active, 'primary big', function () { Season.simPostseasonRound(s, false); E.save(); draw(); refreshHero(); }));
+      controls.push(btn('Sim Entire Playoff', 'ghost', function () { Season.playPostseason(s); E.save(); draw(); refreshHero(); }));
+      return el('div', { class: 'playoff-center' }, [
+        el('div', { class: 'playoff-path' }, ['firstRound','quarters','semis','final'].map(function (key, idx) {
+          return el('span', { class: 'path-step' + (key === bk.activeRound ? ' active' : '') + (idx < order ? ' done' : ''), text: labels[key] });
+        })),
+        el('div', { class: 'playoff-round-head' }, [
+          el('div', {}, [el('div', { class: 'playoff-kicker', text: 'LIVE BRACKET' }), el('h3', { text: active })]),
+          el('span', { class: 'playoff-count', text: games.filter(function (g) { return g.played; }).length + '/' + games.length + ' final' })
+        ]),
+        el('div', { class: 'scoreboard playoff-scoreboard' }, games.map(function (g) { return miniGame(g, { rank: rankMap(), player: g.home === s.team.id || g.away === s.team.id }); })),
+        mine ? el('div', { class: 'playoff-callout', text: 'Your season is on the line. Enter the broadcast to call tempo, fourth downs, conversions, and kickoff strategy.' }) : null,
+        el('div', { class: 'btn-row' }, controls), compactBracket()
+      ]);
+    }
+
+    function compactBracket() {
+      var bk = s.season.postseason.bracket;
+      function rail(title, games) {
+        if (!games || !games.length) return null;
+        return el('div', { class: 'bracket-rail' }, [el('h4', { text: title })].concat(games.map(function (g) {
+          var a=T.get(g.away),h=T.get(g.home);
+          return el('div', { class: 'rail-game' + ((g.home===s.team.id||g.away===s.team.id)?' mine':'') }, [
+            el('span',{text:(a?a.name:'TBD')+(g.played?' '+g.awayScore:'')}),
+            el('span',{text:(h?h.name:'TBD')+(g.played?' '+g.homeScore:'')})
+          ]);
+        })));
+      }
+      return el('div',{class:'bracket-rails'},[
+        rail('First Round',bk.firstRound),rail('Quarterfinals',bk.quarters),rail('Semifinals',bk.semis),rail('Championship',bk.final?[bk.final]:[])
+      ]);
+    }
+
+    function renderPlayoffReveal() {
+      var ps=s.season.postseason,seeds=ps.cfpSeeds||[],mySeed=seeds.indexOf(s.team.id)+1,team=T.get(s.team.id),qualified=mySeed>0;
+      ps.revealSeen=true; E.save();
+      var field=el('div',{class:'reveal-field'},seeds.map(function(id,i){var t=T.get(id);return el('div',{class:'reveal-seed'+(id===s.team.id?' mine':'')},[
+        el('span',{class:'seed-no',text:String(i+1)}),teamBadge(t,38),el('span',{class:'seed-name',text:t.name}),i<4?el('span',{class:'seed-bye',text:'BYE'}):null
+      ]);}));
+      mount(el('div',{class:'screen playoff-reveal'},[
+        el('div',{class:'reveal-glow'}),el('div',{class:'playoff-kicker',text:'COLLEGE FOOTBALL PLAYOFF · '+s.career.year}),el('div',{class:'reveal-trophy',text:'🏆'}),
+        qualified?el('div',{class:'reveal-you'},[teamBadge(team,82),el('div',{},[el('div',{class:'reveal-status',text:'YOU’RE IN'}),el('h1',{text:'#'+mySeed+' '+team.name}),el('p',{text:mySeed<=4?'A first-round bye. Three wins from a national championship.':'Win four games and make history.'})])])
+          :el('div',{class:'reveal-you'},[el('div',{},[el('div',{class:'reveal-status',text:'FIELD SET'}),el('h1',{text:'The bracket is official'}),el('p',{text:'Your season continues outside the playoff, but the title race plays out round by round.'})])]),
+        field,btn(qualified?'Enter the Playoff':'View the Playoff','primary big',function(){seasonTab='week';renderSeason();})
+      ]));
     }
 
     function topGames(games, n) {
@@ -1960,10 +2095,11 @@
   // ---- Game Day broadcast (Wave 3) -----------------------------------------
   var SPEEDS = { slow: 1100, normal: 620, fast: 300 };
 
-  function renderGameDay() {
+  function renderGameDay(postseasonGame) {
     var s = E.state;
     var Season = window.GameSeason, Sim = window.GameSim;
-    var pg = Season.playerWeekGame(s);
+    var isPostseason = !!postseasonGame;
+    var pg = postseasonGame || Season.playerWeekGame(s);
     if (!pg) { renderSeason(); return; }
 
     var league = s.season.league;
@@ -1986,16 +2122,17 @@
     }
 
     var oppRankIdx = s.season.rankings.indexOf(oppId);
-    var stakes = pg.rivalry ? '🔥 Rivalry Game' : (pg.conf ? (T.get(playerId).conf + ' Game') : 'Non-Conference');
+    var stakes = isPostseason ? ('🏆 ' + (pg.bowlName || pg.tag || 'College Football Playoff'))
+      : (pg.rivalry ? '🔥 Rivalry Game' : (pg.conf ? (T.get(playerId).conf + ' Game') : 'Non-Conference'));
     if (oppRankIdx >= 0 && oppRankIdx < 25) stakes += ' · vs #' + (oppRankIdx + 1);
 
     applyTheme(T.get(playerId));
     var homeTeam = T.get(pg.home), weather = pg.weather || (tactical && tactical.weather);
-    var venue = homeTeam.stadium + ' · ' + homeTeam.city + ', ' + homeTeam.st + (weather ? ' · ' + weather.kind + ' ' + weather.temp + '°F' : '');
+    var venue = (isPostseason && pg.neutral ? (pg.bowlName || 'Neutral Site') : homeTeam.stadium + ' · ' + homeTeam.city + ', ' + homeTeam.st) + (weather ? ' · ' + weather.kind + ' ' + weather.temp + '°F' : '');
     var g = Sim.create({
       home: homeCfg, away: awayCfg, playerSide: playerSide,
-      stakes: stakes, neutral: false, venue: venue,
-      seed: (s.season.seed ^ (s.season.week * 40503)) >>> 0
+      stakes: stakes, neutral: !!pg.neutral, venue: venue,
+      seed: (s.season.seed ^ (isPostseason ? ((pg.tag || '').length * 65537 + (pg.home || '').length * 40503) : s.season.week * 40503)) >>> 0
     });
     if (tactical) g[playerSide].tempo = tactical.tempo;
 
@@ -2232,7 +2369,10 @@
           g.ot ? el('div', { class: 'fc-ot', text: g.ot + ' OT' }) : null,
           el('div', { class: 'fc-stat', text: statLine() }),
           btn('Continue  →', 'primary big', function () {
-            lastWeekResult = Season.commitPlayerResult(s, res.homeScore, res.awayScore, g[playerSide].stats);
+            if (isPostseason) {
+              Season.commitPostseasonResult(s, pg, res.homeScore, res.awayScore, g[playerSide].stats);
+              lastWeekResult = null;
+            } else lastWeekResult = Season.commitPlayerResult(s, res.homeScore, res.awayScore, g[playerSide].stats);
             E.save(); seasonTab = 'week'; renderSeason();
           })
         ])
@@ -2278,6 +2418,7 @@
     renderOffseason: renderOffseason,
     renderCarousel: renderCarousel,
     renderStore: renderStore,
+    renderCoachRankings: renderCoachRankings,
     renderSettings: renderSettings,
     renderChampionship: renderChampionship,
     renderFired: renderFired,

@@ -362,11 +362,13 @@
       return B.rating - A.rating;
     },
 
-    // 12-team playoff (5 top conf champs seeded, 7 at-large) + bowls, all simmed.
-    playPostseason: function (state) {
+    // Build a persistent 12-team field. Rounds are advanced separately so a
+    // player can coach every postseason game instead of simming the bracket in
+    // one opaque click.
+    preparePostseason: function (state) {
       var s = state.season;
       if (s.phase !== 'postseason') return null;
-      var rng = E.makeRng((s.seed ^ 0x85ebca6b) >>> 0);
+      if (s.postseason.bracket && s.postseason.bracket.firstRound) return s.postseason;
       var ranked = s.rankings.slice();
       var rankOf = {}; ranked.forEach(function (id, i) { rankOf[id] = i; });
 
@@ -393,33 +395,92 @@
       seeds.sort(function (a, b) { return rankOf[a] - rankOf[b]; });
       s.postseason.cfpSeeds = seeds.slice();
 
-      // Bracket: 1-4 byes; first round 5v12,6v11,7v10,8v9.
-      var bracket = { round: [], names: CFP_SITES };
-      function game(home, away, tag, site) {
-        var g = { home: home, away: away, conf: false, rivalry: false, neutral: true,
+      function game(home, away, tag, site, neutral) {
+        return { home: home, away: away, conf: false, rivalry: false, neutral: neutral !== false,
           homeScore: null, awayScore: null, played: false, tag: tag, bowlName: site || tag };
-        simGame(g, s.league, rng); return g;
       }
-      // First round (seeds 5-12); higher seed hosts.
+      var bracket = { names: CFP_SITES, activeRound: 'firstRound', complete: false };
       var fr = [ [5, 12], [8, 9], [6, 11], [7, 10] ].map(function (p) {
-        return game(seeds[p[0] - 1], seeds[p[1] - 1], 'CFP First Round');
+        return game(seeds[p[0] - 1], seeds[p[1] - 1], 'CFP First Round', 'Campus First Round', false);
       });
-      // Quarterfinals: seed1 vs winner(8/9), seed4 vs winner(5/12), seed2 vs winner(7/10), seed3 vs winner(6/11)
-      var qf = [
-        game(seeds[0], fr[1].winner, 'CFP Quarterfinal', CFP_SITES[0]),
-        game(seeds[3], fr[0].winner, 'CFP Quarterfinal', CFP_SITES[1]),
-        game(seeds[1], fr[3].winner, 'CFP Quarterfinal', CFP_SITES[2]),
-        game(seeds[2], fr[2].winner, 'CFP Quarterfinal', CFP_SITES[3])
-      ];
-      var sf = [
-        game(qf[0].winner, qf[1].winner, 'CFP Semifinal', CFP_SITES[4]),
-        game(qf[2].winner, qf[3].winner, 'CFP Semifinal', CFP_SITES[5])
-      ];
-      var natl = game(sf[0].winner, sf[1].winner, 'National Championship', 'National Championship');
-      bracket.firstRound = fr; bracket.quarters = qf; bracket.semis = sf; bracket.final = natl;
+      bracket.firstRound = fr; bracket.quarters = []; bracket.semis = []; bracket.final = null;
       s.postseason.bracket = bracket;
-      s.postseason.champion = natl.winner;
-      s.league[natl.winner].champ = true;
+      s.postseason.revealSeen = false;
+      return s.postseason;
+    },
+
+    currentPostseasonGames: function (state) {
+      var bk = state.season.postseason.bracket;
+      if (!bk || bk.complete) return [];
+      if (bk.activeRound === 'final') return bk.final ? [bk.final] : [];
+      return bk[bk.activeRound] || [];
+    },
+
+    playerPostseasonGame: function (state) {
+      var id = state.team.id;
+      return GameSeason.currentPostseasonGames(state).filter(function (g) {
+        return !g.played && (g.home === id || g.away === id);
+      })[0] || null;
+    },
+
+    _advancePlayoffRound: function (state) {
+      var s = state.season, bk = s.postseason.bracket, seeds = s.postseason.cfpSeeds;
+      function game(home, away, tag, site) { return { home: home, away: away, conf: false, rivalry: false, neutral: true,
+        homeScore: null, awayScore: null, played: false, tag: tag, bowlName: site || tag }; }
+      if (bk.activeRound === 'firstRound') {
+        bk.quarters = [
+          game(seeds[0], bk.firstRound[1].winner, 'CFP Quarterfinal', CFP_SITES[0]),
+          game(seeds[3], bk.firstRound[0].winner, 'CFP Quarterfinal', CFP_SITES[1]),
+          game(seeds[1], bk.firstRound[3].winner, 'CFP Quarterfinal', CFP_SITES[2]),
+          game(seeds[2], bk.firstRound[2].winner, 'CFP Quarterfinal', CFP_SITES[3])
+        ]; bk.activeRound = 'quarters';
+      } else if (bk.activeRound === 'quarters') {
+        bk.semis = [
+          game(bk.quarters[0].winner, bk.quarters[1].winner, 'CFP Semifinal', CFP_SITES[4]),
+          game(bk.quarters[2].winner, bk.quarters[3].winner, 'CFP Semifinal', CFP_SITES[5])
+        ]; bk.activeRound = 'semis';
+      } else if (bk.activeRound === 'semis') {
+        bk.final = game(bk.semis[0].winner, bk.semis[1].winner, 'National Championship', 'National Championship');
+        bk.activeRound = 'final';
+      } else {
+        bk.complete = true;
+        s.postseason.champion = bk.final.winner;
+        s.league[bk.final.winner].champ = true;
+        GameSeason._finishPostseason(state);
+      }
+    },
+
+    // Sim the active round. When preservePlayer is true the user's unplayed
+    // game remains available for the live broadcast/play-calling screen.
+    simPostseasonRound: function (state, preservePlayer) {
+      var s = state.season;
+      GameSeason.preparePostseason(state);
+      var games = GameSeason.currentPostseasonGames(state);
+      var rng = E.makeRng((s.seed ^ 0x85ebca6b ^ (games.length * 40503) ^ ((s.postseason.bracket.activeRound || '').length * 7919)) >>> 0);
+      games.forEach(function (g) {
+        var mine = g.home === state.team.id || g.away === state.team.id;
+        if (!g.played && !(preservePlayer && mine)) simGame(g, s.league, rng);
+      });
+      if (games.every(function (g) { return g.played; })) GameSeason._advancePlayoffRound(state);
+      GameSeason.syncPlayerRecord(state);
+      return s.postseason;
+    },
+
+    commitPostseasonResult: function (state, game, homeScore, awayScore, teamTotals) {
+      if (!game || game.played) return null;
+      game.homeScore = homeScore; game.awayScore = awayScore;
+      applyResult(game, state.season.league);
+      if (window.GameFootball) window.GameFootball.recordGame(state, game, teamTotals);
+      if (window.GameStory) window.GameStory.afterGame(state, game);
+      GameSeason.simPostseasonRound(state, false);
+      GameSeason.syncPlayerRecord(state);
+      return game;
+    },
+
+    _finishPostseason: function (state) {
+      var s = state.season, ranked = s.rankings.slice(), inField = {};
+      (s.postseason.cfpSeeds || []).forEach(function (id) { inField[id] = true; });
+      var rng = E.makeRng((s.seed ^ 0x27d4eb2f) >>> 0);
 
       // Bowls: teams with >=6 wins, not already in the playoff, paired off.
       var eligible = ranked.filter(function (id) { return s.league[id].w >= 6 && !inField[id]; });
@@ -434,7 +495,15 @@
       s.rankings = computeRankings(s.league, Object.keys(s.league));
       s.phase = 'complete';
       GameSeason.syncPlayerRecord(state);
-      return s.postseason;
+    },
+
+    // Backward-compatible one-click simulation used by tests and old saves.
+    playPostseason: function (state) {
+      if (state.season.phase !== 'postseason') return null;
+      GameSeason.preparePostseason(state);
+      var guard = 0;
+      while (state.season.phase === 'postseason' && guard++ < 8) GameSeason.simPostseasonRound(state, false);
+      return state.season.postseason;
     },
 
     // All postseason games the player appeared in (for their record + display).

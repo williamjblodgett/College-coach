@@ -34,6 +34,9 @@
     { id: 'nutrition', name: 'Elite Nutrition Program', cat: 'Program', cost: 1.5, emoji: '🥗', desc: 'Fuel the roster for a long season.', effect: { development: 0.35 } },
     { id: 'indoorfac', name: 'Indoor Practice Facility', cat: 'Program', cost: 6, emoji: '🏟️', desc: 'Practice through any weather.', effect: { facilities: 12 }, once: true },
     { id: 'rechub', name: 'Recruiting War Room', cat: 'Program', cost: 3, emoji: '🗂️', desc: 'A dedicated space and staff for the class.', effect: { recruiting: 3, development: 0.15 } },
+    { id: 'recoverycenter', name: 'Recovery & Wellness Center', cat: 'Program', cost: 4.5, emoji: '🩺', desc: 'Keep veterans fresher and accelerate offseason growth.', effect: { development: 0.55 } },
+    { id: 'filmcloud', name: 'AI Film Cloud', cat: 'Program', cost: 2.2, emoji: '🎞️', desc: 'Opponent tendencies and self-scouting on every tablet.', effect: { development: 0.25, recruiting: 2 } },
+    { id: 'recruitstudio', name: 'Recruiting Content Studio', cat: 'Program', cost: 1.8, emoji: '🎥', desc: 'Turn visits and commitments into national moments.', effect: { recruiting: 4, recognition: 2 }, once: true },
 
     // Personal team (protect + advance your career)
     { id: 'agent', name: 'Super-Agent', cat: 'Career', cost: 2.5, emoji: '🤝', desc: 'Draws bigger job offers your way.', effect: { jobInterest: 14 } },
@@ -42,11 +45,16 @@
     { id: 'advisor', name: 'Financial Advisor', cat: 'Career', cost: 1.5, emoji: '💹', desc: 'Grows your money — earn interest on your wallet.', effect: { walletInterest: 0.15 } },
     { id: 'mediatrainer', name: 'Media Trainer', cat: 'Career', cost: 1, emoji: '🎙️', desc: 'Polish at the podium (+media).', effect: { media: 6 }, once: true },
     { id: 'buyoutins', name: 'Buyout Insurance', cat: 'Career', cost: 2, emoji: '🛡️', desc: 'A softer landing if it all goes wrong (+AD goodwill).', effect: { reputation: 3 }, once: true },
+    { id: 'legalteam', name: 'Independent Legal Counsel', cat: 'Career', cost: 3.8, emoji: '⚖️', desc: 'A serious compliance defense with less investigation exposure.', effect: { invMult: 0.78, adTrust: 4 }, once: true },
+    { id: 'leadershipretreat', name: 'Leadership Retreat', cat: 'Career', cost: 1.2, emoji: '🧭', desc: 'Refine your voice and command of the program.', effect: { ability: 2, reputation: 2 }, once: true },
+    { id: 'documentary', name: 'Season Documentary Crew', cat: 'Career', cost: 2.8, emoji: '📺', desc: 'Build a national audience—with extra scrutiny if things go wrong.', effect: { recognition: 7, fame: 4 }, once: true },
 
     // Legacy + lifestyle (reputation, legacy points, and pure flex)
     { id: 'foundation', name: 'Charitable Foundation', cat: 'Legacy', cost: 3, emoji: '💗', desc: 'Give back to the community (+reputation, +legacy).', effect: { reputation: 6, legacy: 20 }, once: true },
     { id: 'hofcampaign', name: 'Hall-of-Fame Campaign', cat: 'Legacy', cost: 4, emoji: '🏅', desc: 'Burnish the legend (+legacy).', effect: { legacy: 30 }, once: true },
     { id: 'statue', name: 'Commission a Statue', cat: 'Legacy', cost: 8, emoji: '🗿', desc: 'Bronze, outside the stadium. Immortality (+big legacy).', effect: { legacy: 60, reputation: 4 }, once: true },
+    { id: 'trophyroom', name: 'Interactive Trophy Room', cat: 'Legacy', cost: 5, emoji: '🏆', desc: 'Turn every title and award into a recruiting destination.', effect: { legacy: 35, recruiting: 3 }, once: true },
+    { id: 'coachingacademy', name: 'Coaching Academy', cat: 'Legacy', cost: 6, emoji: '🎓', desc: 'Teach the next generation and grow your coaching tree.', effect: { legacy: 45, ability: 2 }, once: true },
     { id: 'lakehouse', name: 'Lake House', cat: 'Lifestyle', cost: 2, emoji: '🏡', desc: 'Somewhere to recharge in the offseason.', effect: { legacy: 5 }, once: true },
     { id: 'luxurycar', name: 'Luxury Sports Car', cat: 'Lifestyle', cost: 0.4, emoji: '🏎️', desc: 'Arrive in style.', effect: {}, once: true },
     { id: 'yacht', name: 'Yacht', cat: 'Lifestyle', cost: 7, emoji: '🛥️', desc: 'The ultimate flex.', effect: { legacy: 8 }, once: true },
@@ -67,6 +75,22 @@
   var GameCareer = {
     salaryFor: salaryFor,
     fameLabel: fameLabel,
+
+    allTimeRankings: function (state) {
+      var legends = [
+        ['Eddie Robinson',408,9,17,98],['Joe Paterno',409,2,5,94],['Bobby Bowden',377,2,12,93],
+        ['Bear Bryant',323,6,15,97],['Nick Saban',297,7,11,99],['Pop Warner',319,4,8,91],
+        ['Amos Alonzo Stagg',314,2,7,88],['Mack Brown',288,1,3,82],['Tom Osborne',255,3,13,92],
+        ['Bud Wilkinson',145,3,14,89],['Woody Hayes',238,5,13,91],['John Gagliardi',489,4,30,96]
+      ].map(function (x) { return { name:x[0], wins:x[1], titles:x[2], confTitles:x[3], base:x[4], historic:true }; });
+      var c=state.career||{};
+      legends.push({name:(state.coach&&state.coach.name)||'Your Coach',wins:c.wins||0,titles:c.natTitles||0,confTitles:c.confTitles||0,
+        base:Math.min(100,Math.round((c.legacyPoints||0)/8)),player:true});
+      legends.forEach(function(x){x.score=Math.round(x.base+x.titles*12+x.confTitles*1.5+Math.min(45,x.wins/10));});
+      legends.sort(function(a,b){return b.score-a.score||b.wins-a.wins;});
+      legends.forEach(function(x,i){x.rank=i+1;});
+      return legends;
+    },
 
     profileScore: function (state) {
       var c = state.career || {};
@@ -249,6 +273,10 @@
       if (e.legacy) state.career.legacyPoints = (state.career.legacyPoints || 0) + e.legacy;
       if (e.facilities && state.program) state.program.facilitiesLevel = clamp(state.program.facilitiesLevel + e.facilities, 0, 100);
       if (e.media && state.coach && state.coach.ratings) state.coach.ratings.media = clamp(state.coach.ratings.media + e.media, 0, 100);
+      if (e.ability) state.career.coachingAbility = clamp((state.career.coachingAbility || 50) + e.ability, 0, 100);
+      if (e.recognition) state.career.nameRecognition = clamp((state.career.nameRecognition || 10) + e.recognition, 0, 100);
+      if (e.fame) state.career.fame = clamp((state.career.fame || 5) + e.fame, 0, 100);
+      if (e.adTrust && state.integrity) state.integrity.adTrust = clamp(state.integrity.adTrust + e.adTrust, 0, 100);
       return { ok: true, item: it };
     },
 
