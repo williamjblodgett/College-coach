@@ -22,15 +22,18 @@
       if (!('serviceWorker' in navigator)) return Promise.resolve(null);
       return navigator.serviceWorker.register('sw.js').then(function (reg) {
         registration = reg;
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
         reg.addEventListener('updatefound', function () {
           var worker = reg.installing; if (!worker) return;
           worker.addEventListener('statechange', function () {
             if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-              notice('Gridiron Dynasty 2.2 update ready.', 'Update', function () { worker.postMessage({ type: 'SKIP_WAITING' }); });
+              notice('New Gridiron Dynasty release installed. Refreshing…');
+              worker.postMessage({ type: 'SKIP_WAITING' });
             }
           });
         });
         navigator.serviceWorker.addEventListener('controllerchange', function () { location.reload(); });
+        reg.update();
         return reg;
       }).catch(function () { return null; });
     },

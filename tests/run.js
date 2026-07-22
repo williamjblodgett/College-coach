@@ -1169,6 +1169,13 @@ function serve() {
   ok(themes.contrastA >= 4.5 && themes.contrastB >= 4.5, 'primary buttons retain WCAG-readable text contrast (' + themes.contrastA.toFixed(2) + ', ' + themes.contrastB.toFixed(2) + ')');
 
   group('No runtime errors');
+  const releaseUpdate = await page.evaluate(async () => {
+    const [sw, pwa] = await Promise.all([fetch('/sw.js').then(r => r.text()), fetch('/js/pwa.js').then(r => r.text())]);
+    return { immediate: sw.includes('self.skipWaiting();'), cache: sw.includes('gridiron-dynasty-v25-1-auto-update'), genericNotice: pwa.includes('New Gridiron Dynasty release installed') };
+  });
+  ok(releaseUpdate.immediate, 'service worker activates releases immediately');
+  ok(releaseUpdate.cache, 'latest v25.1 cache name is shipped');
+  ok(releaseUpdate.genericNotice, 'PWA update message is release-agnostic');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));
 
   await browser.close();
