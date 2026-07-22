@@ -75,6 +75,7 @@ npm test           # node tests/run.js
 11. ✅ **Career stories** — assistant/coordinator starts, career badges, relationships, press conferences, enriched recruiting pitches/dealbreakers/visits/decommits
 12. ✅ **Living world** — evolving AI programs, fictional AI coach turnover, persistent rivalry history, newsroom, conference realignment, and original lower-division ladders
 13. ✅ **2.0 experience** — five save slots with recovery snapshots, difficulty presets, original SVG crests, weekly game plans, regional weather, install/update/offline UX, reduced motion, and sound controls
+14. ✅ **Dynasty Stories 2.1** — 20+ compliance and scandal events, persistent investigations, evidence and media pressure, response/discovery/hearing stages, appeals, whistleblowers, staff and player fallout, career case history, and reform/redemption programs
 
 Every new career has a stable world seed. Results are reproducible within a save,
 while recruiting identities, program strategies, injuries, headlines, coaching

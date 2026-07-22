@@ -71,8 +71,12 @@
     profileScore: function (state) {
       var c = state.career || {};
       var badge = window.GameStory ? window.GameStory.effects(state).profile : 0;
-      return Math.round((c.coachingAbility || 50) * 0.42 + (c.nameRecognition || 25) * 0.33 +
-        (c.fame || 15) * 0.15 + (c.reputation || 50) * 0.10 + badge);
+      var casePenalty = window.GameCases ? window.GameCases.profilePenalty(state) : 0;
+      var ability = c.coachingAbility == null ? 50 : c.coachingAbility;
+      var recognition = c.nameRecognition == null ? 25 : c.nameRecognition;
+      var fame = c.fame == null ? 15 : c.fame;
+      var reputation = c.reputation == null ? 50 : c.reputation;
+      return Math.round(ability * 0.42 + recognition * 0.33 + fame * 0.15 + reputation * 0.10 + badge - casePenalty);
     },
 
     requiredProfile: function (prestige, div) {
@@ -94,6 +98,9 @@
       c.coachLevel = clamp(1 + Math.floor(c.coachXp / 1000), 1, 20);
       var levels = c.coachLevel - oldLevel;
       c.coachingAbility = clamp((c.coachingAbility || 50) + Math.max(0, levels) + (over >= 4 ? 1 : 0), 20, 99);
+      // Completing seasons and outperforming expectations builds durable
+      // professional credibility even before a marquee title arrives.
+      c.reputation = clamp((c.reputation == null ? 50 : c.reputation) + 2 + Math.max(0, over) + Math.max(0, levels) * 2, 0, 100);
       c.nameRecognition = clamp((c.nameRecognition || 10) + Math.max(-3, over) +
         (summary.wonConf ? 6 : 0) + (summary.madePlayoff ? 7 : 0) + (summary.wonNatl ? 12 : 0), 0, 100);
       c.fame = clamp((c.fame || 5) + Math.max(-2, Math.round(over / 2)) +
@@ -104,6 +111,7 @@
       summary.nameRecognition = c.nameRecognition;
       summary.fame = c.fame;
       summary.fameLabel = fameLabel(c.fame);
+      summary.reputation = c.reputation;
       return summary;
     },
 

@@ -142,6 +142,9 @@
         relationships: { players: 60, staff: 60, boosters: 55, media: 50, ad: 60 },
         pressHistory: [],
         pendingPress: null,
+        ethicsHistory: [],
+        redemption: 0,
+        caseCloud: 0,
         legacyPoints: 0,
         wallet: 0,                // personal money ($M) accumulated from salary (wave 7)
         spent: 0,                 // lifetime personal spending ($M)
@@ -209,6 +212,12 @@
         eventsThisSeason: 0,
         riskyThisSeason: 0,
         allegations: [],          // history of events + verdicts
+        openCases: [],             // persistent multi-stage investigations
+        caseHistory: [],
+        pendingCaseDecision: null,
+        mediaPressure: 0,
+        boosterTrust: 60,
+        complianceScore: 60,
         lastVerdict: null         // most recent end-of-season review result
       },
       history: [],                // season summaries
@@ -309,6 +318,7 @@
     changeJob: function (team) {
       var s = this.state;
       if (!s || !team) return s;
+      if (window.GameCases) window.GameCases.onJobChange(s);
       var job = s.career.jobs[s.career.jobs.length - 1];
       if (job && job.endYear == null) job.endYear = s.career.year;
       s.career.year++; // a season concluded; the new job begins next year

@@ -212,6 +212,7 @@
       var pts = 8 + c.recruiting * 0.09 + state.program.nilLevel * 0.05 + sf.recruiting * 0.4;
       if (window.GameCareer) pts += window.GameCareer.storeEffects(state).recruiting; // store: analytics/jet
       if (window.GameScandal) pts *= window.GameScandal.recruitingPenaltyFactor(state); // NCAA sanctions
+      if (window.GameCases) pts *= window.GameCases.recruitingFactor(state); // active investigations + media pressure
       if (window.GameDifficulty) pts *= window.GameDifficulty.get(state).recruiting || 1;
       return Math.round(pts);
     },
@@ -258,6 +259,7 @@
       base *= 0.72 + fit.score * 0.0056;
       var starResist = 1 + Math.max(0, p.stars - 3) * 0.95;
       var pull = base / starResist;
+      if (window.GameCases) pull *= window.GameCases.recruitingFactor(state);
       p.heat = (p.heat || 0) + pts;
       p.lean = clamp(p.lean + pts * pull, 0, 100);
       var committed = false;

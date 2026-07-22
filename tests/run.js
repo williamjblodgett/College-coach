@@ -1060,6 +1060,35 @@ function serve() {
   ok(v2.realign >= 1, 'conference realignment evolves during a long dynasty');
   ok(v2.crest, 'original generated team crests render as SVG');
 
+  group('Dynasty Stories: persistent investigations, appeals, and connected consequences');
+  const cases = await page.evaluate(() => {
+    const E=window.GameEngine,T=window.TeamData,S=window.GameSeason,C=window.GameCases,Sc=window.GameScandal,P=window.GameProgram,Car=window.GameCareer;
+    E.newCareer({id:'case-coach',name:'Morgan Case',source:'custom',ratings:{recruiting:70,offense:70,defense:70,development:70,discipline:60,motivation:70,media:65}},T.get('fiu'));
+    S.start(E.state);E.state.career.wallet=5;
+    const beforePoints=P.weeklyRecruitPoints(E.state),beforeProfile=Car.profileScore(E.state);
+    const c=C.openCase(E.state,'test','Collective Payment Review','NIL',3);C.advanceWeek(E.state);
+    const response=C.pending(E.state);C.resolve(E.state,'stonewall');
+    E.state.season.week=c.nextWeek;C.advanceWeek(E.state);const discovery=C.pending(E.state);C.resolve(E.state,'limited');
+    E.state.integrity.mediaPressure=30;E.state.integrity.heat=30;E.state.integrity.complianceScore=70;
+    E.state.season.week=c.nextWeek;C.advanceWeek(E.state);const hearing=C.pending(E.state);const verdict=C.resolve(E.state,'accept'),severityBeforeAppeal=verdict&&verdict.severity;
+    const appealPending=C.pending(E.state);if(appealPending)C.resolve(E.state,'appeal');
+    const afterPoints=P.weeklyRecruitPoints(E.state),afterProfile=Car.profileScore(E.state);
+    C.openCase(E.state,'job-cloud','Unresolved Booster Inquiry','Boosters',2);C.onJobChange(E.state);const cloud=E.state.career.caseCloud;E.state.integrity.openCases=[];E.state.integrity.pendingCaseDecision=null;
+    E.state.program.offseasonPoints=20;E.state.integrity.openCases=[];const reform=C.runRedemptionProgram(E.state);
+    window.GameUI.renderHQ();
+    return {events:Sc.EVENTS.length,response:response&&response.phase,discovery:discovery&&discovery.phase,hearing:hearing&&hearing.phase,severity:severityBeforeAppeal,appeal:!!appealPending,history:E.state.integrity.caseHistory.length,ethics:E.state.career.ethicsHistory.length,cloud,pressure:E.state.integrity.mediaPressure,recruitConnected:afterPoints<beforePoints,profileConnected:afterProfile<beforeProfile,beforePoints,afterPoints,beforeProfile,afterProfile,reform:reform.ok};
+  });
+  ok(cases.events >= 20, 'the scandal catalog includes at least 20 varied events (' + cases.events + ')');
+  ok(cases.response === 'response' && cases.discovery === 'discovery' && cases.hearing === 'hearing', 'formal cases advance through response, discovery, and hearing');
+  ok(cases.severity === 'major' && cases.appeal, 'major rulings create an appeal decision');
+  ok(cases.history === 1 && cases.ethics === 2 && cases.cloud === 1, 'closed and unresolved cases persist in career history instead of disappearing after a job change');
+  ok(cases.recruitConnected && cases.profileConnected, 'investigations reduce recruiting and job-market profile (' + cases.beforePoints + '→' + cases.afterPoints + ', ' + cases.beforeProfile + '→' + cases.afterProfile + ')');
+  ok(cases.reform, 'clean programs can launch a reform and redemption initiative');
+  await page.click('.hq button:has-text("Open Case Files")');
+  await page.waitForSelector('.cases-screen');
+  ok(await page.isVisible('.redemption-panel'), 'case-management UI renders history and reform controls');
+  await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/case-files.png'), fullPage: true });
+
   group('No runtime errors');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));
 

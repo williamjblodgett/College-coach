@@ -145,7 +145,7 @@
         el('span', { text: '🏈 4 divisions' }), el('span', { text: '🧑‍💼 assistant-to-legend careers' }),
         el('span', { text: '🌎 evolving worlds' }), el('span', { text: '📴 offline PWA' })
       ]),
-      el('p', { class: 'title-foot', text: 'v2.0 · Dynasty Engine · ' + T.byDivision('fbs').length + ' FBS programs' })
+      el('p', { class: 'title-foot', text: 'v2.1 · Dynasty Stories · ' + T.all().length + ' playable programs' })
     ]);
     mount(card);
   }
@@ -685,9 +685,15 @@
           el('span', { class: 'meter' }, [el('span', { class: 'meter-fill', style: 'width:' + integ.adTrust + '%' })]),
           el('span', { class: 'kv-num', text: integ.adTrust })
         ]),
+        window.GameCases ? el('div', { class: 'case-metrics' }, [
+          el('span', { text: 'Media ' + integ.mediaPressure }),
+          el('span', { text: 'Compliance ' + integ.complianceScore }),
+          el('span', { text: 'Open cases ' + integ.openCases.length })
+        ]) : null,
         sanctions.length
           ? el('div', { class: 'sanction-list' }, sanctions.map(function (x) { return el('div', { class: 'sanction-item', text: '⛔ ' + x }); }))
-          : el('p', { class: 'muted', text: 'Program in good standing.' })
+          : el('p', { class: 'muted', text: integ.openCases && integ.openCases.length ? 'A formal inquiry is active.' : 'Program in good standing.' }),
+        window.GameCases ? btn('Open Case Files', 'ghost', function () { renderCaseFiles(); }) : null
       ]);
     }
 
@@ -731,6 +737,30 @@
       el('div',{class:'sticky-footer'},[el('div',{class:'sf-info'},[el('span',{text:(w.news||[]).length+' archived stories · '+Object.keys(w.rivalries||{}).length+' tracked rivalries'})]),el('div',{class:'sf-actions'},[btn('← Back to HQ','primary',function(){renderHQ();})])])
     ]);
     mount(screen);
+  }
+
+  function renderCaseFiles() {
+    var s=E.state,C=window.GameCases,i=C.ensure(s),open=i.openCases||[],history=i.caseHistory||[];
+    applyTheme(T.get(s.team.id));
+    function caseRow(c,closed){return el('article',{class:'case-file '+(closed?'closed':'open')},[
+      el('div',{class:'case-file-head'},[el('span',{class:'sc-flag',text:(closed?'CLOSED':'ACTIVE')+' · '+c.category}),el('span',{class:'scrutiny '+(c.verdict&&c.verdict.severity==='severe'?'bad':'ok'),text:closed?(c.verdict&&c.verdict.severity||'cleared'):c.stage})]),
+      el('div',{class:'card-title',text:c.title}),
+      el('p',{class:'muted',text:'Opened '+c.openedYear+' · Week '+c.openedWeek+' · Evidence '+c.evidence+' · '+(c.choices||[]).length+' recorded decisions'}),
+      c.verdict&&c.verdict.sanctions?el('div',{class:'sanction-list'},c.verdict.sanctions.map(function(x){return el('div',{class:'sanction-item',text:x});})):null
+    ]);}
+    var screen=el('div',{class:'screen cases-screen'},[
+      el('div',{class:'screen-head'},[el('h2',{text:'Compliance Case Files'}),el('p',{class:'muted',text:'Investigations persist across weeks. Cooperation, evidence, media pressure, staff trust, and appeals shape the outcome.'})]),
+      el('div',{class:'stat-grid'},[
+        el('div',{class:'stat'},[el('div',{class:'stat-val',text:open.length}),el('div',{class:'stat-label',text:'Open Cases'})]),
+        el('div',{class:'stat'},[el('div',{class:'stat-val',text:i.mediaPressure}),el('div',{class:'stat-label',text:'Media Pressure'})]),
+        el('div',{class:'stat'},[el('div',{class:'stat-val',text:i.complianceScore}),el('div',{class:'stat-label',text:'Compliance'})]),
+        el('div',{class:'stat'},[el('div',{class:'stat-val',text:s.career.redemption||0}),el('div',{class:'stat-label',text:'Reform Seasons'})])
+      ]),
+      el('div',{class:'panel'},[el('h3',{text:'Active Investigations'})].concat(open.length?open.map(function(c){return caseRow(c,false);}):[el('p',{class:'muted',text:'No active formal cases.'})])),
+      el('div',{class:'panel redemption-panel'},[el('h3',{text:'Reform & Redemption'}),el('p',{class:'muted',text:'Invest 8 offseason points in independent oversight, player welfare, and community trust. Open cases must be resolved first.'}),btn('Launch Reform Program','primary',function(){var r=C.runRedemptionProgram(s);if(!r.ok){toast(r.reason);return;}E.save();toast('Reform initiative launched.');renderCaseFiles();})]),
+      el('div',{class:'panel'},[el('h3',{text:'Closed Cases'})].concat(history.length?history.map(function(c){return caseRow(c,true);}):[el('p',{class:'muted',text:'No completed case history.'})])),
+      el('div',{class:'sticky-footer'},[el('div',{class:'sf-info'},[el('span',{text:(s.career.ethicsHistory||[]).length+' career rulings follow your coach'})]),el('div',{class:'sf-actions'},[btn('← Back to HQ','primary',renderHQ)])])
+    ]);mount(screen);
   }
 
   // ---- Season Hub (Wave 2) -------------------------------------------------
@@ -835,14 +865,31 @@
       ]);
     }
 
+    function caseDecisionCard(p) {
+      return el('div', { class: 'scandal-card case-decision' }, [
+        el('div', { class: 'sc-flag', text: '📂 FORMAL CASE · ' + p.phase.toUpperCase() }),
+        el('div', { class: 'sc-title', text: p.title }),
+        el('div', { class: 'sc-blurb', text: p.prompt }),
+        el('div', { class: 'sc-options' }, p.options.map(function (o) {
+          return el('button', { class: 'dc-opt' + (o.risky ? ' risky' : ''), onclick: function () {
+            window.GameCases.resolve(s, o.id); E.save();
+            if (s.integrity.fired) { renderFired(); return; }
+            draw(); refreshHero();
+          } }, [el('div', { class: 'dc-opt-label', text: o.label }), el('div', { class: 'dc-opt-desc', text: o.desc })]);
+        }))
+      ]);
+    }
+
     function weekTab() {
       var wrap = el('div');
       var phase = s.season.phase;
 
       // A pending compliance/scandal decision takes priority.
       var Scandal = window.GameScandal;
+      var pendingCase = window.GameCases && window.GameCases.pending(s);
+      if (pendingCase) wrap.appendChild(caseDecisionCard(pendingCase));
       var pendingScandal = Scandal && Scandal.pendingEvent(s);
-      if (pendingScandal) wrap.appendChild(scandalCard(pendingScandal));
+      if (pendingScandal && !pendingCase) wrap.appendChild(scandalCard(pendingScandal));
       var pendingPress = window.GameStory && window.GameStory.pending(s);
       if (pendingPress) wrap.appendChild(el('div', { class: 'press-card' }, [
         el('div', { class: 'sc-flag', text: 'PRESS CONFERENCE' }),

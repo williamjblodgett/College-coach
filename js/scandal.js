@@ -155,6 +155,7 @@
 
   var GameScandal = {
     EVENTS: EVENTS,
+    registerEvents: function (items) { (items || []).forEach(function (ev) { if (!EVENT_MAP[ev.id]) { EVENTS.push(ev); EVENT_MAP[ev.id] = ev; } }); return EVENTS; },
 
     // Qualitative scrutiny band (we surface a band, not the raw number).
     scrutinyBand: function (state) {
@@ -227,6 +228,7 @@
       var outcome = GameScandal.applyEffects(state, opt.fx || {});
       if (opt.risky) i.riskyThisSeason = (i.riskyThisSeason || 0) + 1;
       i.allegations.push({ year: state.career.year, event: ev.id, choice: opt.id, tag: (opt.fx && opt.fx.tag) || '', risky: !!opt.risky });
+      if (window.GameCases) window.GameCases.onScandalChoice(state, ev, opt, outcome);
       return { ok: true, event: ev, option: opt, outcome: outcome };
     },
 
@@ -243,6 +245,11 @@
       if (fx.fame) { state.career.fame = clamp(state.career.fame + fx.fame, 0, 100); out.fame = fx.fame; }
       if (fx.recruitPoints && state.recruiting) { state.recruiting.points += fx.recruitPoints; out.recruitPoints = fx.recruitPoints; }
       if (fx.nil && state.program) { state.program.nilLevel = clamp(state.program.nilLevel + fx.nil, 0, 100); out.nil = fx.nil; }
+      if (fx.wallet) { state.career.wallet = Math.max(0, (state.career.wallet || 0) + fx.wallet); out.wallet = fx.wallet; }
+      if (fx.morale) { (state.roster || []).forEach(function (p) { p.morale = clamp((p.morale || 70) + fx.morale, 0, 100); }); out.morale = fx.morale; }
+      if (fx.staffLoyalty) { Object.keys(state.staff || {}).forEach(function (k) { state.staff[k].loyalty = clamp((state.staff[k].loyalty || 60) + fx.staffLoyalty, 0, 100); }); out.staffLoyalty = fx.staffLoyalty; }
+      if (fx.boosters && state.career.relationships) { state.career.relationships.boosters = clamp(state.career.relationships.boosters + fx.boosters, 0, 100); out.boosters = fx.boosters; }
+      if (window.GameCases) { var ci = window.GameCases.ensure(state); if (fx.mediaPressure) ci.mediaPressure = clamp(ci.mediaPressure + fx.mediaPressure, 0, 100); if (fx.compliance) ci.complianceScore = clamp(ci.complianceScore + fx.compliance, 0, 100); }
       if (fx.severe) i._severeFlag = true;
       if (fx.capSeverity) i._capSeverity = true;
       if (fx.resign) { GameScandal.dismiss(state, 'resign'); out.resign = true; }

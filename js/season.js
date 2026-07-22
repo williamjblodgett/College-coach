@@ -242,6 +242,7 @@
       s.started = true;
       if (window.GameFootball) window.GameFootball.onSeasonStart(state);
       if (window.GameScandal) window.GameScandal.onSeasonStart(state);
+      if (window.GameCases) window.GameCases.onSeasonStart(state);
       return s;
     },
 
@@ -292,6 +293,7 @@
       if (s.week > s.totalRegWeeks) s.phase = 'confchamp';
       if (window.GameProgram) window.GameProgram.onWeekAdvanced(state);
       if (window.GameFootball) window.GameFootball.advanceWeek(state);
+      if (window.GameCases) window.GameCases.advanceWeek(state);
       if (window.GameScandal) window.GameScandal.maybeTrigger(state);
       GameSeason.syncPlayerRecord(state);
       return res;
@@ -313,6 +315,7 @@
       if (s.week > s.totalRegWeeks) s.phase = 'confchamp';
       if (window.GameProgram) window.GameProgram.onWeekAdvanced(state);
       if (window.GameFootball) window.GameFootball.advanceWeek(state);
+      if (window.GameCases) window.GameCases.advanceWeek(state);
       if (window.GameScandal) window.GameScandal.maybeTrigger(state);
       GameSeason.syncPlayerRecord(state);
       return { week: wk, games: games, playerGame: playerGame };
