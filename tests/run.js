@@ -234,6 +234,7 @@ function serve() {
 
   // Screenshot the HQ for the report.
   fs.mkdirSync(path.join(ROOT, 'tests/artifacts'), { recursive: true });
+  await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/hq.png'), fullPage: true });
 
   // ---------- (a) SEASON ENGINE ----------
@@ -1087,7 +1088,23 @@ function serve() {
   await page.click('.hq button:has-text("Open Case Files")');
   await page.waitForSelector('.cases-screen');
   ok(await page.isVisible('.redemption-panel'), 'case-management UI renders history and reform controls');
+  await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(ROOT, 'tests/artifacts/case-files.png'), fullPage: true });
+
+  group('Team identity: accessible full-interface color themes');
+  const themes = await page.evaluate(() => {
+    const E=window.GameEngine,T=window.TeamData;
+    function snap(){const cs=getComputedStyle(document.documentElement);return {accent:cs.getPropertyValue('--accent').trim(),ink:cs.getPropertyValue('--accent-ink').trim(),bg:cs.getPropertyValue('--bg').trim(),panel:cs.getPropertyValue('--panel').trim(),primary:cs.getPropertyValue('--team-primary').trim(),alt:cs.getPropertyValue('--team-alt').trim(),meta:document.querySelector('meta[name="theme-color"]').content};}
+    function rgb(h){h=h.replace('#','');return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16)/255).map(v=>v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4));}
+    function ratio(a,b){const x=rgb(a),y=rgb(b),l1=.2126*x[0]+.7152*x[1]+.0722*x[2],l2=.2126*y[0]+.7152*y[1]+.0722*y[2];return (Math.max(l1,l2)+.05)/(Math.min(l1,l2)+.05);}
+    E.newCareer({id:'theme',name:'Theme Coach',source:'custom',ratings:{recruiting:70,offense:70,defense:70,development:70,discipline:70,motivation:70,media:70}},T.get('alabama'));window.GameUI.renderHQ();const a=snap();
+    E.changeJob(T.get('oregon'));window.GameUI.renderHQ();const b=snap();
+    return {a,b,contrastA:ratio(a.accent,a.ink),contrastB:ratio(b.accent,b.ink)};
+  });
+  ok(themes.a.primary !== themes.b.primary, 'changing teams changes the root team palette');
+  ok(themes.a.accent !== themes.b.accent && themes.a.bg !== themes.b.bg && themes.a.panel !== themes.b.panel, 'team colors drive accents and interface surfaces');
+  ok(themes.a.meta !== themes.b.meta, 'mobile browser and PWA chrome follows the active team');
+  ok(themes.contrastA >= 4.5 && themes.contrastB >= 4.5, 'primary buttons retain WCAG-readable text contrast (' + themes.contrastA.toFixed(2) + ', ' + themes.contrastB.toFixed(2) + ')');
 
   group('No runtime errors');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));

@@ -26,7 +26,7 @@
           var worker = reg.installing; if (!worker) return;
           worker.addEventListener('statechange', function () {
             if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-              notice('Gridiron Dynasty 2.1 update ready.', 'Update', function () { worker.postMessage({ type: 'SKIP_WAITING' }); });
+              notice('Gridiron Dynasty 2.2 update ready.', 'Update', function () { worker.postMessage({ type: 'SKIP_WAITING' }); });
             }
           });
         });

@@ -77,11 +77,17 @@
   }
   function readable(hex) {
     var c = hexToRgb(hex);
-    var lum = (0.299*c[0] + 0.587*c[1] + 0.114*c[2]);
-    return lum > 150 ? '#111' : '#fff';
+    var relative = c.map(function (v) { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); });
+    var l = .2126 * relative[0] + .7152 * relative[1] + .0722 * relative[2];
+    var whiteContrast = 1.05 / (l + .05), blackContrast = (l + .05) / .05;
+    return whiteContrast >= blackContrast ? '#ffffff' : '#111111';
   }
   function lum(c) { return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; }
   function toHex(c) { return '#' + c.map(function (v) { return ('0' + Math.max(0, Math.min(255, Math.round(v))).toString(16)).slice(-2); }).join(''); }
+  function mixHex(base, tint, amount) {
+    var a = hexToRgb(base), b = hexToRgb(tint);
+    return toHex(a.map(function (v, i) { return v * (1 - amount) + b[i] * amount; }));
+  }
   // Turn a (possibly dark) team color into a vibrant accent readable on the dark UI.
   function vividAccent(hex) {
     var c = hexToRgb(hex), guard = 0;
@@ -96,19 +102,31 @@
     var root = document.documentElement;
     if (!team || !team.colors) { resetTheme(); return; }
     var primary = team.colors[0], secondary = team.colors[1];
-    // Pick whichever color makes the more vivid accent.
+    // Primary drives interaction color; secondary remains a visible supporting
+    // accent. Dark school colors are lifted enough to meet UI contrast needs.
     var a1 = vividAccent(primary), a2 = vividAccent(secondary);
-    var accent = lum(hexToRgb(a1)) >= lum(hexToRgb(a2)) - 25 ? a1 : a2;
+    var accent = a1;
     root.style.setProperty('--accent', accent);
     root.style.setProperty('--accent-dark', shade(accent, -34));
     root.style.setProperty('--accent-ink', readable(accent));
+    root.style.setProperty('--team-alt', a2);
     root.style.setProperty('--team-primary', primary);
     root.style.setProperty('--team-secondary', secondary);
+    root.style.setProperty('--bg', mixHex('#080b12', primary, .11));
+    root.style.setProperty('--bg-2', mixHex('#111725', primary, .15));
+    root.style.setProperty('--panel', mixHex('#171e2b', primary, .14));
+    root.style.setProperty('--panel-2', mixHex('#202a3b', primary, .18));
+    root.style.setProperty('--line', mixHex('#303a50', primary, .22));
+    var rgb = hexToRgb(primary);
+    root.style.setProperty('--team-glow', 'rgba(' + rgb.join(',') + ',.28)');
+    root.style.setProperty('--team-wash', 'rgba(' + rgb.join(',') + ',.14)');
+    root.style.setProperty('--team-border', 'rgba(' + rgb.join(',') + ',.48)');
     document.querySelector('meta[name="theme-color"]') && document.querySelector('meta[name="theme-color"]').setAttribute('content', shade(primary, -40));
   }
   function resetTheme() {
     var root = document.documentElement;
-    ['--accent', '--accent-dark', '--accent-ink'].forEach(function (v) { root.style.removeProperty(v); });
+    ['--accent','--accent-dark','--accent-ink','--team-alt','--team-primary','--team-secondary','--bg','--bg-2','--panel','--panel-2','--line','--team-glow','--team-wash','--team-border'].forEach(function (v) { root.style.removeProperty(v); });
+    document.querySelector('meta[name="theme-color"]') && document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0b0e14');
   }
 
   function btn(label, cls, on) {
@@ -145,7 +163,7 @@
         el('span', { text: '🏈 4 divisions' }), el('span', { text: '🧑‍💼 assistant-to-legend careers' }),
         el('span', { text: '🌎 evolving worlds' }), el('span', { text: '📴 offline PWA' })
       ]),
-      el('p', { class: 'title-foot', text: 'v2.1 · Dynasty Stories · ' + T.all().length + ' playable programs' })
+      el('p', { class: 'title-foot', text: 'v2.2 · Team Identity · ' + T.all().length + ' playable programs' })
     ]);
     mount(card);
   }
@@ -1235,6 +1253,7 @@
 
   function renderSeasonSummary(sum) {
     var s = E.state;
+    applyTheme(T.get(s.team.id));
     var champ = T.get(sum.champion);
     var badges = [];
     if (sum.wonNatl) badges.push(['🏆', 'National Champions']);
@@ -1286,6 +1305,7 @@
   // ---- Fired / resignation outcome (Wave 6, previews wave 7 carousel) -------
   function renderFired() {
     var s = E.state;
+    applyTheme(T.get(s.team.id));
     var reason = s.integrity.firedReason;
     var reasonText = {
       showcause: 'A show-cause penalty has ended your tenure. Your name is mud on the coaching carousel.',
