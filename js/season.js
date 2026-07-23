@@ -191,10 +191,20 @@
   }
 
   // ---- rankings -------------------------------------------------------------
-  function computeRankings(league, teamIds) {
+  function computeRankings(league, teamIds, schedule) {
     var scored = teamIds.map(function (id) {
       var L = league[id];
-      var score = L.w * 135 - L.l * 82 + L.rating * 1.5 + (L.pf - L.pa) * 0.08;
+      var games = (schedule || []).filter(function (g) { return g.played && (g.home === id || g.away === id); });
+      var oppTotal = 0, qualityWins = 0, badLosses = 0;
+      games.forEach(function (g) {
+        var opp = g.home === id ? g.away : g.home, won = g.winner === id;
+        var oppRating = league[opp] ? league[opp].rating : 60;
+        oppTotal += oppRating;
+        if (won && oppRating >= 82) qualityWins++;
+        if (!won && oppRating < 68) badLosses++;
+      });
+      var sos = games.length ? oppTotal / games.length : L.rating;
+      var score = L.w * 135 - L.l * 82 + L.rating * 1.5 + (L.pf - L.pa) * 0.08 + sos * 1.15 + qualityWins * 28 - badLosses * 35;
       return { id: id, score: score };
     });
     scored.sort(function (a, b) { return b.score - a.score; });
@@ -238,7 +248,7 @@
       s.league = league;
       s.schedule = buildSchedule(teams, rng, state.team.id);
       if (window.GameTactics) window.GameTactics.prepareSchedule(state);
-      s.rankings = computeRankings(league, teams.map(function (t) { return t.id; }));
+      s.rankings = computeRankings(league, teams.map(function (t) { return t.id; }), s.schedule);
       s.year = state.career.year;
       s.week = 1;
       s.phase = 'regular';
@@ -297,7 +307,7 @@
       }
       var rng = E.makeRng((s.seed ^ (wk * 2654435761)) >>> 0);
       GameSeason.gamesInWeek(state, wk).forEach(function (g) { if (!g.played) simGame(g, s.league, rng); });
-      s.rankings = computeRankings(s.league, Object.keys(s.league));
+      s.rankings = computeRankings(s.league, Object.keys(s.league), s.schedule);
       var res = { week: wk, games: GameSeason.gamesInWeek(state, wk), playerGame: pg };
       if (window.GameFootball && pg) window.GameFootball.recordGame(state, pg, teamTotals);
       if (window.GameStory && pg) window.GameStory.afterGame(state, pg);
@@ -318,7 +328,7 @@
       var rng = E.makeRng((s.seed ^ (s.week * 2654435761)) >>> 0);
       var games = GameSeason.gamesInWeek(state, s.week);
       games.forEach(function (g) { if (!g.played) simGame(g, s.league, rng); });
-      s.rankings = computeRankings(s.league, Object.keys(s.league));
+      s.rankings = computeRankings(s.league, Object.keys(s.league), s.schedule);
       var playerGame = games.filter(function (g) { return g.home === state.team.id || g.away === state.team.id; })[0] || null;
       var wk = s.week;
       if (window.GameFootball && playerGame) window.GameFootball.recordGame(state, playerGame);
@@ -382,7 +392,7 @@
       games.forEach(function (g) { var mine=g.home===state.team.id||g.away===state.team.id; if(!g.played && !(preservePlayer&&mine)) simGame(g,s.league,rng); });
       if (games.every(function (g) { return g.played; })) {
         games.forEach(function (g) { s.postseason.confChamps[(T.get(g.home)||{}).conf] = g.winner; s.league[g.winner].champ = true; });
-        s.rankings = computeRankings(s.league, Object.keys(s.league)); s.phase = 'postseason'; GameSeason.syncPlayerRecord(state);
+        s.rankings = computeRankings(s.league, Object.keys(s.league), s.schedule); s.phase = 'postseason'; GameSeason.syncPlayerRecord(state);
       }
       return games;
     },
@@ -533,7 +543,7 @@
         bowls.push(g);
       }
       s.postseason.bowls = bowls;
-      s.rankings = computeRankings(s.league, Object.keys(s.league));
+      s.rankings = computeRankings(s.league, Object.keys(s.league), s.schedule);
       s.phase = 'complete';
       GameSeason.syncPlayerRecord(state);
     },

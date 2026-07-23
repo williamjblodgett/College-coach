@@ -1161,6 +1161,19 @@ function serve() {
   ok(v2.realign >= 1, 'conference realignment evolves during a long dynasty');
   ok(v2.crest, 'original generated team crests render as SVG');
 
+  group('Current football starting strength');
+  const currentPower = await page.evaluate(() => {
+    const E=window.GameEngine,T=window.TeamData,S=window.GameSeason;
+    E.newCareer({id:'power-audit',name:'Power Auditor',source:'custom',ratings:{recruiting:60,offense:60,defense:60,development:60,discipline:60,motivation:60,media:60}},T.get('kentstate'));
+    S.start(E.state);
+    const top10=E.state.season.rankings.slice(0,10);
+    const conferences=top10.map(id=>T.get(id).conf);
+    return {label:window.CurrentPower.label,top10,major:conferences.filter(c=>c==='SEC'||c==='Big Ten').length,indiana:E.state.season.league.indiana.rating,champRank:top10.indexOf('indiana')};
+  });
+  ok(currentPower.label === '2026 preseason', 'fresh careers use the current 2026 preseason baseline');
+  ok(currentPower.champRank === 0 && currentPower.indiana >= 95, 'defending champion Indiana opens as an elite team');
+  ok(currentPower.major >= 6, 'SEC and Big Ten programs comprise most of the opening top ten (' + currentPower.major + ')');
+
   group('Dynasty Stories: persistent investigations, appeals, and connected consequences');
   const cases = await page.evaluate(() => {
     const E=window.GameEngine,T=window.TeamData,S=window.GameSeason,C=window.GameCases,Sc=window.GameScandal,P=window.GameProgram,Car=window.GameCareer;
@@ -1209,10 +1222,10 @@ function serve() {
   group('No runtime errors');
   const releaseUpdate = await page.evaluate(async () => {
     const [sw, pwa] = await Promise.all([fetch('/sw.js').then(r => r.text()), fetch('/js/pwa.js').then(r => r.text())]);
-    return { immediate: sw.includes('self.skipWaiting();'), cache: sw.includes('gridiron-dynasty-v29-career-longevity'), genericNotice: pwa.includes('New Gridiron Dynasty release installed') };
+    return { immediate: sw.includes('self.skipWaiting();'), cache: sw.includes('gridiron-dynasty-v30-current-power'), genericNotice: pwa.includes('New Gridiron Dynasty release installed') };
   });
   ok(releaseUpdate.immediate, 'service worker activates releases immediately');
-  ok(releaseUpdate.cache, 'latest v29 cache name is shipped');
+  ok(releaseUpdate.cache, 'latest v30 cache name is shipped');
   ok(releaseUpdate.genericNotice, 'PWA update message is release-agnostic');
   eq(errors.length, 0, 'no page/console errors: ' + errors.slice(0, 3).join(' | '));
 

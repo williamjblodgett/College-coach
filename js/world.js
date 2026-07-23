@@ -12,7 +12,9 @@
       if(team._basePrestige==null)team._basePrestige=team.prestige;
       if(team._baseConf==null)team._baseConf=team.conf;
       team.conf=team._baseConf;
-      var p=w.programs[team.id]||(w.programs[team.id]={basePrestige:team._basePrestige,prestige:team._basePrestige,strategy:STRATEGIES[Math.floor(rng()*STRATEGIES.length)],resources:clamp(Math.round(team._basePrestige*9+rng()*12),15,98),momentum:0});
+      var startingPower=window.CurrentPower?window.CurrentPower.rating(team):clamp(Math.round(38+team._basePrestige*5.5),35,99);
+      var p=w.programs[team.id]||(w.programs[team.id]={basePrestige:team._basePrestige,prestige:team._basePrestige,power:startingPower,strategy:STRATEGIES[Math.floor(rng()*STRATEGIES.length)],resources:clamp(Math.round(team._basePrestige*9+rng()*12),15,98),momentum:0});
+      if(p.power==null)p.power=startingPower;
       team.prestige=p.prestige;
       if(!w.coaches[team.id]&&team.id!==state.team.id)w.coaches[team.id]={name:window.NameData.make(rng),rating:45+Math.floor(rng()*40),years:1,archetype:p.strategy};
     });
@@ -27,7 +29,7 @@
     onSeasonStart:function(state){var w=ensure(state);Object.keys(w.coaches).forEach(function(id){w.coaches[id].years=(w.coaches[id].years||0)+1;});return w;},
     finishSeason:function(state,summary){
       var w=ensure(state),league=state.season.league||{},year=state.career.year,rng=E.stream('world-offseason',year,state);
-      Object.keys(league).forEach(function(id){var p=w.programs[id],team=T.get(id);if(!p||!team)return;var expected=clamp(Math.round(p.prestige*.9+1),3,11),over=league[id].w-expected;p.momentum=clamp(Math.round((p.momentum||0)*.5+over*4),-30,30);if(id===state.team.id)return;if(over>=4&&rng()<.45)p.prestige=clamp(p.prestige+1,1,10);if(over<=-4&&rng()<.4)p.prestige=clamp(p.prestige-1,1,10);team.prestige=p.prestige;});
+      Object.keys(league).forEach(function(id){var p=w.programs[id],team=T.get(id);if(!p||!team)return;var expected=clamp(Math.round(p.prestige*.9+1),3,11),over=league[id].w-expected;p.momentum=clamp(Math.round((p.momentum||0)*.5+over*4),-30,30);p.power=clamp(Math.round((p.power||league[id].rating)*.82+league[id].rating*.1+(league[id].w-league[id].l)*.65),38,99);if(id===state.team.id)return;if(over>=4&&rng()<.45)p.prestige=clamp(p.prestige+1,1,10);if(over<=-4&&rng()<.4)p.prestige=clamp(p.prestige-1,1,10);team.prestige=p.prestige;});
       var my=T.get(state.team.id);if(summary.wonNatl){news(state,'championship',my.name+' stands alone','The national championship reshapes the sport.',my.id);}else if(summary.wins>=10)news(state,'season',my.name+' breaks through',summary.wins+' wins have changed expectations.',my.id);else news(state,'season',my.name+' closes the book on '+year,summary.wins+'-'+summary.losses+' sets the stage for a defining offseason.',my.id);
       var ids=Object.keys(league).filter(function(id){return id!==state.team.id;});
       for(var i=0;i<Math.min(6,ids.length);i++){var id=ids[Math.floor(rng()*ids.length)],entry=league[id],coach=w.coaches[id],team=T.get(id);if(!coach||!team)continue;var exp=clamp(Math.round(w.programs[id].prestige*.9+1),3,11);if(entry.w<=exp-3||rng()<.018){var old=coach.name;w.coaches[id]={name:window.NameData.make(rng),rating:42+Math.floor(rng()*45),years:0,archetype:STRATEGIES[Math.floor(rng()*STRATEGIES.length)]};news(state,'coaching',team.name+' changes direction',old+' is out; '+w.coaches[id].name+' takes over.',id);}}
@@ -39,7 +41,7 @@
       summary.worldNews=w.news.slice(0,8);return w;
     },
     realign:function(state,rng){var w=ensure(state),powers=['SEC','Big Ten','ACC','Big 12'],candidates=T.byDivision('fbs').filter(function(t){return powers.indexOf(t.conf)<0;}).sort(function(a,b){return w.programs[b.id].prestige-w.programs[a.id].prestige;}),target=powers[Math.floor(rng()*powers.length)],bottom=T.byConference(target).sort(function(a,b){return w.programs[a.id].prestige-w.programs[b.id].prestige;})[0],up=candidates[0];if(!up||!bottom)return null;var old=up.conf;up.conf=target;bottom.conf=old;var move={year:state.career.year,up:up.id,down:bottom.id,from:old,to:target};w.realignment.push(move);news(state,'realignment',up.name+' joins the '+target,bottom.name+' moves to the '+old+'.',up.id);return move;},
-    strategyEffect:function(state,teamId){var p=ensure(state).programs[teamId];return p?{rating:Math.round((p.resources-50)*.04+p.momentum*.05),strategy:p.strategy}: {rating:0,strategy:'stability'};}
+    strategyEffect:function(state,teamId){var p=ensure(state).programs[teamId],team=T.get(teamId);if(!p||!team)return {rating:0,strategy:'stability'};var legacy=38+team.prestige*5.5;return {rating:Math.round((p.power-legacy)+(p.resources-50)*.025+p.momentum*.04),strategy:p.strategy};}
   };
   window.GameWorld=World;if(window.GameRegistry)window.GameRegistry.register('system','world',World);
 })();

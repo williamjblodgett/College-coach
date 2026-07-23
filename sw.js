@@ -2,7 +2,7 @@
  * Bump CACHE_NAME on every release so deploys reach devices. Network-first means
  * the newest deploy always wins when online; cache is a fallback for offline.
  */
-var CACHE_NAME = 'gridiron-dynasty-v29-career-longevity';
+var CACHE_NAME = 'gridiron-dynasty-v30-current-power';
 
 var CORE = [
   './',
@@ -10,6 +10,7 @@ var CORE = [
   './css/style.css',
   './js/data/teams.js',
   './js/data/teams-fbs.js',
+  './js/data/current-power.js',
   './js/data/lower-division-tools.js',
   './js/data/teams-fcs.js',
   './js/data/teams-d2.js',
